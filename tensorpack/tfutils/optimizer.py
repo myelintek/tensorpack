@@ -157,9 +157,9 @@ class AccumGradOptimizer(ProxyOptimizer):
         return slots
 
     def apply_gradients(self, grads_and_vars, global_step=None, name=None):
-        assert global_step is None, \
-            "AccumGradOptimizer doesn't support the option global_step! " \
-            "Please maintain it yourself."
+        #assert global_step is None, \
+        #    "AccumGradOptimizer doesn't support the option global_step! " \
+        #    "Please maintain it yourself."
         grads_and_vars = FilterNoneGrad().process(grads_and_vars)
         vs = []
         for g, v in grads_and_vars:
