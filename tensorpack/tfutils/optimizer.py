@@ -183,16 +183,24 @@ class AccumGradOptimizer(ProxyOptimizer):
             for s, gv in zip(slots, grads_and_vars):
                 g, v = gv
                 ops.append(s.assign_add(g))
-            update_counter = tf.assign_add(counter, 1, name='update_counter')
+
+            def counter_add():
+              return tf.assign_add(counter, 1)
+            def counter_reset():
+              return tf.assign(counter, 0)
+
+            #update_counter = tf.assign_add(counter, 1, name='update_counter')
+            update_counter = tf.cond(tf.equal(counter, self._niter - 1), counter_reset, counter_add)
             update_slot_op = tf.group(update_counter, *ops, name='update_slot')
 
             def update_grad():
-                update_op = self._opt.apply_gradients(slots_and_vars)
+                update_op = self._opt.apply_gradients(slots_and_vars, global_step)
                 with tf.control_dependencies([update_op]):
                     clear_ops = [tf.assign(s, tf.zeros_like(s)) for s in slots]
                 return tf.group(*clear_ops, name='update_grad')
 
-            pred = tf.equal(tf.mod(counter, self._niter), 0)
+            #pred = tf.equal(tf.mod(counter, self._niter), 0)
+            pred = tf.equal(counter, self._niter - 1)
             with tf.control_dependencies([update_slot_op]):
                 if name is None:
                     name = 'cond_update_grad'
