@@ -141,18 +141,19 @@ class SyncMultiGPUTrainerReplicated(SingleCostTrainer):
     """
 
     @map_arg(gpus=_int_to_range)
-    def __init__(self, gpus):
+    def __init__(self, gpus, iter_size):
         """
         Args:
             gpus ([int]): list of GPU ids.
         """
+        self.iter_size = iter_size
         self.devices = gpus
-        self._builder = SyncMultiGPUReplicatedBuilder(gpus)
+        self._builder = SyncMultiGPUReplicatedBuilder(gpus, iter_size)
         super(SyncMultiGPUTrainerReplicated, self).__init__()
 
     def _setup_graph(self, input, get_cost_fn, get_opt_fn):
         self.train_op, post_init_op = self._builder.build(
-            self._make_get_grad_fn(input, get_cost_fn, get_opt_fn), get_opt_fn)
+            self._make_get_grad_fn(input, get_cost_fn, get_opt_fn), get_opt_fn, self.get_global_step)
 
         cb = RunOp(
             post_init_op,
@@ -172,6 +173,9 @@ class SyncMultiGPUTrainerReplicated(SingleCostTrainer):
                 trace_file.write(trace.generate_chrome_trace_format())
         else:
             self.hooked_sess.run(self.train_op)
+
+    def get_global_step(self):
+        return self.loop._global_step
 
 
 class DistributedTrainerBase(SingleCostTrainer):
