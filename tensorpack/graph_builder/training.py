@@ -30,7 +30,7 @@ class GraphBuilder(object):
 
 
 class DataParallelBuilder(GraphBuilder):
-    def __init__(self, towers, iter_size):
+    def __init__(self, towers):
         """
         Args:
             towers(list[int]): list of GPU ids.
@@ -40,7 +40,6 @@ class DataParallelBuilder(GraphBuilder):
             DataParallelBuilder._check_tf_version()
 
         self.towers = towers
-        self.iter_size = iter_size
 
     @staticmethod
     def _check_tf_version():
@@ -167,7 +166,7 @@ class SyncMultiGPUReplicatedBuilder(DataParallelBuilder):
     `tensorflow/benchmarks <https://github.com/tensorflow/benchmarks>`_.
     """
 
-    def build(self, get_grad_fn, get_opt_fn, get_global_step):
+    def build(self, get_grad_fn, get_opt_fn):
         """
         Args:
             get_grad_fn (-> [(grad, var)]):
@@ -191,11 +190,7 @@ class SyncMultiGPUReplicatedBuilder(DataParallelBuilder):
             use_vs=[False] + [True] * (len(self.towers) - 1))
 
         DataParallelBuilder._check_grad_list(grad_list)
-        with tf.name_scope('Accumu_iter'):
-            if get_global_step() % self.iter_size == 0:
-                grads = allreduce_grads(grad_list)
-            else:
-                grads = grad_list
+        grads = allreduce_grads(grad_list)
 
         train_ops = []
         opt = get_opt_fn()
