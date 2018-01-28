@@ -144,58 +144,45 @@ class AccumGradOptimizerAlt(ProxyOptimizer):
             opt (tf.train.Optimizer): the underlying sub-optimizer.
             niter (int): number of iterations to accumulate gradients.
         """
-        super(AccumGradOptimizerAlt, self).__init__(opt, 'AccumGradOptimizerAlt')
+        super(AccumGradOptimizerAlt, self).__init__(opt, 'AccumGrad')
         self._niter = int(niter)
         
     def _create_accum_slots(self, var_list):
-        slots = []
-        #with tf.variable_scope("slots", reuse=tf.AUTO_REUSE):
-        with tf.variable_scope("", reuse=tf.AUTO_REUSE):
-            for i, v in  enumerate(var_list):
-                # TODO an option to not colocate the accumulators with variables (to save more memory)
-                s = self._zeros_slot(v, "accum", self._name)
-                #s = self._zeros_slot(v, "accum_{}".format(i), self._name)
-                slots.append(s)
-        return slots
-
+        with tf.variable_scope("", reuse=False):
+            return [self._zeros_slot(v, "accum_grad", self._name) for v in  var_list]
+            
     def compute_gradients(self, *args, **kwargs):
-        #assert global_step is None, \
-        #    "AccumGradOptimizer doesn't support the option global_step! " \
-        #    "Please maintain it yourself."
+        
+        slots_variable = self._create_accum_slots(tf.trainable_variables())
 
-        grads_and_vars = self._opt.compute_gradients(*args, **kwargs)
-        vs = []
-        gs = []
-
-        for g, v in grads_and_vars:
-            vs.append(v)
-            gs.append(g)
-        slots = self._create_accum_slots(vs)
-        #slots = [tf.Variable(tf.zeros_like(v.initialized_value()), trainable=False) for v in vs]
-        slots = [tf.assign_add(s, g) for s, g in zip(slots, gs)]
+        # trans variable to tensor
+        slots_tensor = [tf.identity(s) for s in slots_variable]
 
         def cond(slots, i, limit):
 		    return i < limit
 
         def body(slots, i, limit):
+            # get gradients few times
             grads_and_vars = self._opt.compute_gradients(*args, **kwargs)
-            gs = []
-            for g, v in grads_and_vars:
-                gs.append(g)
-            slots = [tf.assign_add(s,g) for s, g in zip(slots, gs)]
-            i = i + 1
-            return slots, i, limit
+            slots = [tf.add(s, tf.divide(g, self._niter)) for s, (g, v) in zip(slots, grads_and_vars)]
+            return slots, i+1, limit
 
-        slots, i, limit = tf.while_loop(cond, body, [slots, 1, self._niter])
-		    
-        self._accum_slots = slots
-        slots_and_vars = zip(slots, vs)
+        accumulated_slots, i, limit = tf.while_loop(cond, body, [slots_tensor, 0, self._niter])
+        
+        # pass the orginal variable to apply_gradients for reset slots
+        # only variable type contain assign operation
+        self._accum_slots = slots_variable
+        
+        # compose a result with accumulated gradient
+        slots_and_vars = zip(accumulated_slots, tf.trainable_variables())
         return slots_and_vars
 
     def apply_gradients(self, grads_and_vars, global_step=None, name=None):
         with tf.name_scope('apply_gradients'):
+            # update weight
             update_op = self._opt.apply_gradients(grads_and_vars, global_step)
             with tf.control_dependencies([update_op]):
+                # clear slot
                 clear_ops = [tf.assign(s, tf.zeros_like(s)) for s in self._accum_slots]
         return tf.group(*clear_ops, name='update_grad')
 
