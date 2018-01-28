@@ -148,7 +148,7 @@ class AccumGradOptimizerAlt(ProxyOptimizer):
         self._niter = int(niter)
         
     def _create_accum_slots(self, var_list):
-        with tf.variable_scope("", reuse=False):
+        with tf.variable_scope("", reuse=tf.AUTO_REUSE):
             return [self._zeros_slot(v, "accum_grad", self._name) for v in  var_list]
             
     def compute_gradients(self, *args, **kwargs):
