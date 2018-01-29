@@ -162,7 +162,7 @@ class AccumGradOptimizerAlt(ProxyOptimizer):
         if(kwargs.get("var_list") != None):
             trainable_var = nest.flatten(kwargs.get("var_list"))
         else:
-            var_list = (
+            trainable_var = (
                 variables.trainable_variables() +
                 ops.get_collection(ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES))
             #raise RuntimeError("var_list can't be empty")
