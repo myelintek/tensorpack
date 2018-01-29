@@ -6,6 +6,11 @@
 import tensorflow as tf
 from contextlib import contextmanager
 from .gradproc import FilterNoneGrad
+from tensorflow.python.framework import ops
+from tensorflow.python.util import nest
+from tensorflow.python.eager import context
+from tensorflow.python.ops import variables
+
 
 __all__ = ['apply_grad_processors', 'ProxyOptimizer',
            'PostProcessOptimizer', 'VariableAssignmentOptimizer',
@@ -152,8 +157,19 @@ class AccumGradOptimizerAlt(ProxyOptimizer):
             return [self._zeros_slot(v, "accum_grad", self._name) for v in  var_list]
             
     def compute_gradients(self, *args, **kwargs):
-        
-        slots_variable = self._create_accum_slots(tf.trainable_variables())
+        if context.in_eager_mode():
+            raise RuntimeError("accum not support eager mode")
+        if(kwargs.get("var_list") != None):
+            trainable_var = nest.flatten(kwargs.get("var_list"))
+        else:
+            var_list = (
+                variables.trainable_variables() +
+                ops.get_collection(ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES))
+            #raise RuntimeError("var_list can't be empty")
+        trainable_var += ops.get_collection(ops.GraphKeys._STREAMING_MODEL_PORTS)
+        slots_variable = self._create_accum_slots(trainable_var)
+
+        #slots_variable = self._create_accum_slots(tf.trainable_variables())
 
         # trans variable to tensor
         slots_tensor = [tf.identity(s) for s in slots_variable]
