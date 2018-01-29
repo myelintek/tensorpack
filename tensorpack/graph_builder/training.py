@@ -225,6 +225,8 @@ class SyncMultiGPUReplicatedBuilder(DataParallelBuilder):
             split_name = v.name.split('/')
             prefix = split_name[0]
             realname = '/'.join(split_name[1:])
+            if 'AccumGrad' in realname:
+                continue
             if prefix in realname:
                 logger.error("[SyncMultiGPUReplicatedBuilder] variable "
                              "{} has its prefix {} appears multiple times in its name!".format(v.name, prefix))
