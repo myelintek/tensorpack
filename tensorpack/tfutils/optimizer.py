@@ -157,7 +157,7 @@ class AccumGradOptimizerAlt(ProxyOptimizer):
             return [self._zeros_slot(v, "accum_grad", self._name) for v in  var_list]
             
     def compute_gradients(self, *args, **kwargs):
-        if ctx.has_own_variables:
+        if get_current_tower_context().has_own_variables:
             trainable_var = get_current_tower_context().get_collection_in_tower(
 		    tf.GraphKeys.TRAINABLE_VARIABLES)
         else:
