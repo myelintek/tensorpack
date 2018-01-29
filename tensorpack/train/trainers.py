@@ -159,20 +159,20 @@ class SyncMultiGPUTrainerReplicated(SingleCostTrainer):
             run_before=True, run_as_trigger=True, verbose=True)
         return [cb]
 
-    def run_step(self):
-        # Create a timeline for the last loop and export to json to view with
-        # chrome://tracing/.
-        if self.loop._local_step == self.loop.steps_per_epoch - 1:
-            run_metadata = tf.RunMetadata()
-            self.hooked_sess.run(self.train_op,
-                options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
-                run_metadata=run_metadata)
-            trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-            with open('timeline.ctf.json', 'w') as trace_file:
-                trace_file.write(trace.generate_chrome_trace_format())
-        else:
-            self.hooked_sess.run(self.train_op)
-
+    #def run_step(self):
+    #    # Create a timeline for the last loop and export to json to view with
+    #    # chrome://tracing/.
+    #    if self.loop._local_step == self.loop.steps_per_epoch - 1:
+    #        run_metadata = tf.RunMetadata()
+    #        self.hooked_sess.run(self.train_op,
+    #            options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
+    #            run_metadata=run_metadata)
+    #        trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+    #        with open('timeline.ctf.json', 'w') as trace_file:
+    #            trace_file.write(trace.generate_chrome_trace_format())
+    #    else:
+    #        self.hooked_sess.run(self.train_op)
+#
 
 class DistributedTrainerBase(SingleCostTrainer):
 

@@ -25,7 +25,7 @@ from resnet_model import (
 from tensorpack.tfutils.optimizer import AccumGradOptimizerAlt
 import tensorflow as tf
 
-TOTAL_BATCH_SIZE = 64
+TOTAL_BATCH_SIZE = 512
 
 
 class Model(ImageNetModel):
@@ -112,8 +112,8 @@ def get_config(model, fake=False, xla=False):
         model=model,
         dataflow=dataset_train,
         callbacks=callbacks,
-        steps_per_epoch=10,
-        max_epoch=1,
+        steps_per_epoch=1250,
+        max_epoch=30,
         nr_tower=nr_tower
     )
 
