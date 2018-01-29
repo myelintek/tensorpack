@@ -10,7 +10,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.util import nest
 from tensorflow.python.eager import context
 from tensorflow.python.ops import variables
-
+from .tower import get_current_tower_context
 
 __all__ = ['apply_grad_processors', 'ProxyOptimizer',
            'PostProcessOptimizer', 'VariableAssignmentOptimizer',
@@ -157,16 +157,22 @@ class AccumGradOptimizerAlt(ProxyOptimizer):
             return [self._zeros_slot(v, "accum_grad", self._name) for v in  var_list]
             
     def compute_gradients(self, *args, **kwargs):
-        if context.in_eager_mode():
-            raise RuntimeError("accum not support eager mode")
-        if(kwargs.get("var_list") != None):
-            trainable_var = nest.flatten(kwargs.get("var_list"))
+        if ctx.has_own_variables:
+            trainable_var = get_current_tower_context().get_collection_in_tower(
+		    tf.GraphKeys.TRAINABLE_VARIABLES)
         else:
-            trainable_var = (
-                variables.trainable_variables() +
-                ops.get_collection(ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES))
+            trainable_var = tf.trainable_variables()
+	
+	#if context.in_eager_mode():
+        #    raise RuntimeError("accum not support eager mode")
+        #if(kwargs.get("var_list") != None):
+        #    trainable_var = nest.flatten(kwargs.get("var_list"))
+        #else:
+        #    trainable_var = (
+        #        variables.trainable_variables() +
+        #        ops.get_collection(ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES))
             #raise RuntimeError("var_list can't be empty")
-        trainable_var += ops.get_collection(ops.GraphKeys._STREAMING_MODEL_PORTS)
+        #trainable_var += ops.get_collection(ops.GraphKeys._STREAMING_MODEL_PORTS)
         slots_variable = self._create_accum_slots(trainable_var)
 
         #slots_variable = self._create_accum_slots(tf.trainable_variables())
