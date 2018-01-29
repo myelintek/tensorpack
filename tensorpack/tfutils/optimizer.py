@@ -157,11 +157,11 @@ class AccumGradOptimizerAlt(ProxyOptimizer):
             return [self._zeros_slot(v, "accum_grad", self._name) for v in  var_list]
             
     def compute_gradients(self, *args, **kwargs):
-        if get_current_tower_context().has_own_variables:
-            trainable_var = get_current_tower_context().get_collection_in_tower(
-		    tf.GraphKeys.TRAINABLE_VARIABLES)
-        else:
-            trainable_var = tf.trainable_variables()
+        #if get_current_tower_context().has_own_variables:
+        #    trainable_var = get_current_tower_context().get_collection_in_tower(
+	#        tf.GraphKeys.TRAINABLE_VARIABLES)
+        #else:
+        #    trainable_var = tf.trainable_variables()
 	
 	#if context.in_eager_mode():
         #    raise RuntimeError("accum not support eager mode")
@@ -173,12 +173,16 @@ class AccumGradOptimizerAlt(ProxyOptimizer):
         #        ops.get_collection(ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES))
             #raise RuntimeError("var_list can't be empty")
         #trainable_var += ops.get_collection(ops.GraphKeys._STREAMING_MODEL_PORTS)
+	
+	grads_and_vars = self._opt.compute_gradients(*args, **kwargs)
+	trainable_var = [v for g, v in grads_and_vars]
         slots_variable = self._create_accum_slots(trainable_var)
-
+	
         #slots_variable = self._create_accum_slots(tf.trainable_variables())
 
         # trans variable to tensor
-        slots_tensor = [tf.identity(s) for s in slots_variable]
+        #slots_tensor = [tf.identity(s) for s in slots_variable]
+        slots_tensor = [tf.assign(s, g) for s, (g, v) in zip(slots_variable, grads_and_vars)]
 
         def cond(slots, i, limit):
 		    return i < limit
@@ -189,7 +193,7 @@ class AccumGradOptimizerAlt(ProxyOptimizer):
             slots = [tf.add(s, tf.divide(g, self._niter)) for s, (g, v) in zip(slots, grads_and_vars)]
             return slots, i+1, limit
 
-        accumulated_slots, i, limit = tf.while_loop(cond, body, [slots_tensor, 0, self._niter])
+        accumulated_slots, i, limit = tf.while_loop(cond, body, [slots_tensor, 1, self._niter])
         
         # pass the orginal variable to apply_gradients for reset slots
         # only variable type contain assign operation
