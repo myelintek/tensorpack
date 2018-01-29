@@ -9,7 +9,7 @@ from .gradproc import FilterNoneGrad
 
 __all__ = ['apply_grad_processors', 'ProxyOptimizer',
            'PostProcessOptimizer', 'VariableAssignmentOptimizer',
-           'AccumGradOptimizer']
+           'AccumGradOptimizerAlt', 'AccumGradOptimizer']
 
 
 class ProxyOptimizer(tf.train.Optimizer):
@@ -126,6 +126,82 @@ class VariableAssignmentOptimizer(PostProcessOptimizer):
                 return t
             return tf.assign(v, t, use_locking=False).op
         super(VariableAssignmentOptimizer, self).__init__(opt, f)
+
+
+class AccumGradOptimizerAlt(ProxyOptimizer):
+    """
+    An optimizer which accumulates gradients across :math:`k` :meth:`minimize` calls,
+    and apply them together in every :math:`k`th :meth:`minimize` call.
+    This is equivalent to using a :math:`k` times larger batch size plus a
+    :math:`k` times larger learning rate, but uses much less memory.
+
+    Note that this implementation may not support all models.
+    E.g., it doesn't support sparse gradient update.
+    """
+
+    def __init__(self, opt, niter):
+        """
+        Args:
+            opt (tf.train.Optimizer): the underlying sub-optimizer.
+            niter (int): number of iterations to accumulate gradients.
+        """
+        super(AccumGradOptimizerAlt, self).__init__(opt, 'AccumGradOptimizerAlt')
+        self._niter = int(niter)
+        #self._counter = tf.Variable(
+        #            0, name="counter", trainable=False, dtype=tf.int32)
+
+    def _create_accum_slots(self, var_list):
+        slots = []
+        for v in var_list:
+            # TODO an option to not colocate the accumulators with variables (to save more memory)
+            s = self._zeros_slot(v, "accum", self._name)
+            slots.append(s)
+        return slots
+
+    def compute_gradients(self, *args, **kwargs):
+        #assert global_step is None, \
+        #    "AccumGradOptimizer doesn't support the option global_step! " \
+        #    "Please maintain it yourself."
+
+        grads_and_vars = self._opt.compute_gradients(*args, **kwargs)
+        grads_and_vars = FilterNoneGrad().process(grads_and_vars)
+        
+        vs = []
+        gs = []
+
+        for g, v in grads_and_vars:
+            vs.append(v)
+            gs.append(g)
+        #slots = self._create_accum_slots(vs)
+        slots = [tf.Variable(tf.zeros_like(v.initialized_value()), name="accum_slots", trainable=False) for v in vs]
+        slots = [tf.assign_add(s, g) for s, g in zip(slots, gs)]
+
+        def cond(slots, i, limit):
+		    return i < limit
+
+        def body(slots, i, limit):
+            grads_and_vars = self._opt.compute_gradients(*args, **kwargs)
+            grads_and_vars = FilterNoneGrad().process(grads_and_vars)
+            gs = []
+            for g, v in grads_and_vars:
+                gs.append(g)
+            slots = [tf.assign_add(s,g) for s, g in zip(slots, gs)]
+            i = i + 1
+            return slots, i, limit
+
+        slots, i, limit = tf.while_loop(cond, body, [slots, 1, self._niter])
+		    
+        self._accum_slots = slots
+        slots_and_vars = zip(slots, vs)
+        return slots_and_vars
+
+    def apply_gradients(self, grads_and_vars, global_step=None, name=None):
+        grads_and_vars = FilterNoneGrad().process(grads_and_vars)
+        with tf.name_scope('apply_gradients'):
+            update_op = self._opt.apply_gradients(grads_and_vars, global_step)
+            with tf.control_dependencies([update_op]):
+                clear_ops = [tf.assign(s, tf.zeros_like(s)) for s in self._accum_slots]
+        return tf.group(*clear_ops, name='update_grad')
 
 
 class AccumGradOptimizer(ProxyOptimizer):

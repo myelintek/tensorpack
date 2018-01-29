@@ -22,10 +22,10 @@ from resnet_model import (
     preresnet_group, preresnet_basicblock, preresnet_bottleneck,
     resnet_group, resnet_basicblock, resnet_bottleneck, se_resnet_bottleneck,
     resnet_backbone)
-from tensorpack.tfutils.optimizer import AccumGradOptimizer
+from tensorpack.tfutils.optimizer import AccumGradOptimizerAlt
 import tensorflow as tf
 
-TOTAL_BATCH_SIZE = 256
+TOTAL_BATCH_SIZE = 64
 
 
 class Model(ImageNetModel):
@@ -62,7 +62,7 @@ class Model(ImageNetModel):
         opt = tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
 
         if self.iter_size != 1:
-            opt = AccumGradOptimizer(opt, self.iter_size)
+            opt = AccumGradOptimizerAlt(opt, self.iter_size)
         return opt
 
 def get_data(name, batch):
