@@ -176,6 +176,7 @@ class SyncMultiGPUTrainerReplicated(SingleCostTrainer):
         #else:
         #    self.hooked_sess.run(self.train_op)
         if (self.loop._local_step % self.iter_size) == 0:
+            self.hooked_sess.run(self.accum_op)
             super(SyncMultiGPUTrainerReplicated, self).run_step()
             self.hooked_sess.run(self.clear_op)
         else:

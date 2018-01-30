@@ -25,7 +25,7 @@ from resnet_model import (
 from tensorpack.tfutils.optimizer import AccumGradOptimizerAlt
 import tensorflow as tf
 
-TOTAL_BATCH_SIZE = 64
+TOTAL_BATCH_SIZE = 512
 
 
 class Model(ImageNetModel):
@@ -55,15 +55,6 @@ class Model(ImageNetModel):
             return resnet_backbone(
                 image, self.num_blocks,
                 preresnet_group if self.mode == 'preact' else resnet_group, self.block_func)
-
-    def _get_optimizer(self):
-        lr = tf.get_variable('learning_rate', initializer=0.1, trainable=False)
-        tf.summary.scalar('learning_rate', lr)
-        opt = tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
-
-        if self.iter_size != 1:
-            opt = AccumGradOptimizerAlt(opt, self.iter_size)
-        return opt
 
 def get_data(name, batch):
     isTrain = name == 'train'
@@ -112,7 +103,7 @@ def get_config(model, fake=False, xla=False):
         model=model,
         dataflow=dataset_train,
         callbacks=callbacks,
-        steps_per_epoch=1250,
+        steps_per_epoch=2500,
         max_epoch=30,
         nr_tower=nr_tower
     )

@@ -166,12 +166,12 @@ class SyncMultiGPUReplicatedBuilder(DataParallelBuilder):
     `tensorflow/benchmarks <https://github.com/tensorflow/benchmarks>`_.
     """
     def _create_accum_slots(self, grad_list):
-        raw_devices = ['/gpu:{}'.format(k) for k in self.towers]
         slot_list = []
-        for idx, grad_and_vars in enumerate(grad_list):
-            with tf.device(raw_devices[idx]):
+        for grad_and_vars in grad_list:
+            v = grad_and_vars[0][1]
+            with tf.device(v.device):
                 with tf.variable_scope("", reuse=tf.AUTO_REUSE):
-                    slot_list.append([(tf.Variable(tf.zeros_like(v.initialized_value()), trainable=False), v) for (_,v) in grad_and_vars])
+                    slot_list.append([(tf.Variable(tf.zeros_like(v.initialized_value()), trainable=False, name="accum"), v) for (_,v) in grad_and_vars])
         return slot_list
 
     def build(self, get_grad_fn, get_opt_fn):
@@ -201,16 +201,14 @@ class SyncMultiGPUReplicatedBuilder(DataParallelBuilder):
         accum_grad_list = self._create_accum_slots(grad_list)
         accum_op = []
         clear_op = []
-        for idx, grad_and_vars in enumerate(grad_list):
-             with tf.device(raw_devices[idx]):
-                with override_to_local_variable(enable=idx > 0):
-                    accum_grad = accum_grad_list[idx]
-                    accum_op.append([accum_grad[i][0].assign_add(gv[0]) for i, gv in enumerate(grad_and_vars)])
-                    clear_op.append([ag.assign(tf.zeros_like(ag)) for ag,_ in accum_grad])
+
+        # iterate per device
+        for grad_and_vars, accum_and_vars in zip(grad_list, accum_grad_list):
+            v = grad_and_vars[0][1]
+            with tf.device(v.device):
+                accum_op.append([av[0].assign_add(gv[0]) for gv,av in zip(grad_and_vars, accum_and_vars)])
+                clear_op.append([ag.assign(tf.zeros_like(ag)) for ag,_ in accum_and_vars])
         
-        # ops = [k[0] for k in grad_list[1]] + [k[0] for k in grad_list[0]]
-        # self.train_op = tf.group(*ops)
- 
         DataParallelBuilder._check_grad_list(accum_grad_list)
         grads = allreduce_grads(accum_grad_list)
 
