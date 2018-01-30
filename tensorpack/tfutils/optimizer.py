@@ -10,7 +10,7 @@ from .tower import get_current_tower_context
 
 __all__ = ['apply_grad_processors', 'ProxyOptimizer',
            'PostProcessOptimizer', 'VariableAssignmentOptimizer',
-           'AccumGradOptimizer']
+           'AccumGradOptimizer', 'AccumGradOptimizerAlt']
 
 
 class ProxyOptimizer(tf.train.Optimizer):
