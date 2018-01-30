@@ -117,7 +117,7 @@ class Model(ModelDesc):
 
     def _get_optimizer(self):
         lr = tf.get_variable('learning_rate', initializer=0.01, trainable=False)
-        opt = tf.train.MomentumOptimizer(lr, 0.9)
+        opt = tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
         #opt = tf.train.GradientDescentOptimizer(lr)
         if(self.iter_size > 1):
             opt = AccumGradOptimizerAlt(opt, self.iter_size)
