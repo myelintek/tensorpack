@@ -25,7 +25,7 @@ from resnet_model import (
 from tensorpack.tfutils.optimizer import AccumGradOptimizerAlt
 import tensorflow as tf
 
-TOTAL_BATCH_SIZE = 512
+TOTAL_BATCH_SIZE = 64
 
 
 class Model(ImageNetModel):
@@ -152,4 +152,5 @@ if __name__ == '__main__':
         if args.load:
             config.session_init = get_model_loader(args.load)
         trainer = SyncMultiGPUTrainerReplicated(max(get_nr_gpu(), 1))
+        trainer.set_iter_size(args.iter_size)
         launch_train_with_config(config, trainer)

@@ -151,7 +151,7 @@ class SyncMultiGPUTrainerReplicated(SingleCostTrainer):
         super(SyncMultiGPUTrainerReplicated, self).__init__()
 
     def _setup_graph(self, input, get_cost_fn, get_opt_fn):
-        self.train_op, post_init_op = self._builder.build(
+        self.train_op, self.accum_op, self.clear_op, post_init_op = self._builder.build(
             self._make_get_grad_fn(input, get_cost_fn, get_opt_fn), get_opt_fn)
 
         cb = RunOp(
@@ -159,20 +159,27 @@ class SyncMultiGPUTrainerReplicated(SingleCostTrainer):
             run_before=True, run_as_trigger=True, verbose=True)
         return [cb]
 
-    #def run_step(self):
-    #    # Create a timeline for the last loop and export to json to view with
-    #    # chrome://tracing/.
-    #    if self.loop._local_step == self.loop.steps_per_epoch - 1:
-    #        run_metadata = tf.RunMetadata()
-    #        self.hooked_sess.run(self.train_op,
-    #            options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
-    #            run_metadata=run_metadata)
-    #        trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-    #        with open('timeline.ctf.json', 'w') as trace_file:
-    #            trace_file.write(trace.generate_chrome_trace_format())
-    #    else:
-    #        self.hooked_sess.run(self.train_op)
-#
+    def set_iter_size(self, iter_size):
+        self.iter_size = iter_size
+
+    def run_step(self):
+        # Create a timeline for the last loop and export to json to view with
+        # chrome://tracing/.
+        #if self.loop._local_step == self.loop.steps_per_epoch - 1:
+        #    run_metadata = tf.RunMetadata()
+        #    self.hooked_sess.run(self.train_op,
+        #        options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
+        #        run_metadata=run_metadata)
+        #    trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+        #    with open('timeline.ctf.json', 'w') as trace_file:
+        #        trace_file.write(trace.generate_chrome_trace_format())
+        #else:
+        #    self.hooked_sess.run(self.train_op)
+        if (self.loop._local_step % self.iter_size) == 0:
+            super(SyncMultiGPUTrainerReplicated, self).run_step()
+            self.hooked_sess.run(self.clear_op)
+        else:
+            self.hooked_sess.run(self.accum_op)
 
 class DistributedTrainerBase(SingleCostTrainer):
 
