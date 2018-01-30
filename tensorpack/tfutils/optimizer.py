@@ -6,10 +6,6 @@
 import tensorflow as tf
 from contextlib import contextmanager
 from .gradproc import FilterNoneGrad
-from tensorflow.python.framework import ops
-from tensorflow.python.util import nest
-from tensorflow.python.eager import context
-from tensorflow.python.ops import variables
 from .tower import get_current_tower_context
 
 __all__ = ['apply_grad_processors', 'ProxyOptimizer',
@@ -143,7 +139,7 @@ class AccumGradOptimizerAlt(ProxyOptimizer):
     E.g., it doesn't support sparse gradient update.
     """
 
-    def __init__(self, opt, niter):
+    def __init__(self, opt, niter=1, method=1):
         """
         Args:
             opt (tf.train.Optimizer): the underlying sub-optimizer.
@@ -151,19 +147,28 @@ class AccumGradOptimizerAlt(ProxyOptimizer):
         """
         super(AccumGradOptimizerAlt, self).__init__(opt, 'AccumGrad')
         self._niter = int(niter)
-        
+        self._method = int(method)
+
     def _create_accum_slots(self, var_list):
-        with tf.variable_scope("", reuse=tf.AUTO_REUSE):
-            return [self._zeros_slot(v, "accum_grad", self._name) for v in  var_list]
-            
+        #with tf.variable_scope("", reuse=tf.AUTO_REUSE):
+        return [self._zeros_slot(v, "accum_grad", self._name) for v in  var_list]
+
     def compute_gradients(self, *args, **kwargs):
+        # get trainalbe variable
         if get_current_tower_context().has_own_variables:
             trainable_var = get_current_tower_context().get_collection_in_tower(
-	        tf.GraphKeys.TRAINABLE_VARIABLES)
+                tf.GraphKeys.TRAINABLE_VARIABLES)
         else:
             trainable_var = tf.trainable_variables()
-	
-	#if context.in_eager_mode():
+
+        # Another method to get trainable variable
+
+        #from tensorflow.python.framework import ops
+        #from tensorflow.python.util import nest
+        #from tensorflow.python.eager import context
+        #from tensorflow.python.ops import variables
+
+        #if context.in_eager_mode():
         #    raise RuntimeError("accum not support eager mode")
         #if(kwargs.get("var_list") != None):
         #    trainable_var = nest.flatten(kwargs.get("var_list"))
@@ -171,46 +176,44 @@ class AccumGradOptimizerAlt(ProxyOptimizer):
         #    trainable_var = (
         #        variables.trainable_variables() +
         #        ops.get_collection(ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES))
-            #raise RuntimeError("var_list can't be empty")
+        #    raise RuntimeError("var_list can't be empty")
         #trainable_var += ops.get_collection(ops.GraphKeys._STREAMING_MODEL_PORTS)
-	
-	#grads_and_vars = self._opt.compute_gradients(*args, **kwargs)
-	#trainable_var = [v for g, v in grads_and_vars]
-        slots_variable = self._create_accum_slots(trainable_var)
-	
-        #slots_variable = self._create_accum_slots(tf.trainable_variables())
-
-        # trans variable to tensor
-        slots_tensor = [tf.identity(s) for s in slots_variable]
-        #slots_tensor = [tf.assign(s, g) for s, (g, v) in zip(slots_variable, grads_and_vars)]
 
         def cond(slots, i, limit):
-		    return i < limit
+                    return i < limit
 
         def body(slots, i, limit):
             # get gradients few times
             grads_and_vars = self._opt.compute_gradients(*args, **kwargs)
+            #slots = [tf.add(s, g) for s, (g, v) in zip(slots, grads_and_vars)]
             slots = [tf.add(s, tf.divide(g, self._niter)) for s, (g, v) in zip(slots, grads_and_vars)]
             return slots, i+1, limit
 
-        accumulated_slots, i, limit = tf.while_loop(cond, body, [slots_tensor, 0, self._niter])
-        
-        # pass the orginal variable to apply_gradients for reset slots
-        # only variable type contain assign operation
-        self._accum_slots = slots_variable
-        
-        # compose a result with accumulated gradient
-        slots_and_vars = zip(accumulated_slots, tf.trainable_variables())
-        return slots_and_vars
+        if(self._method == 1):
+            # Method 1
+            # get gradient once first, and add other times of gradient in while_loop
+            # Note: there are no variable slots to be produced.
+            grads_and_vars = self._opt.compute_gradients(*args, **kwargs)
+            accum_grads = [g for g, v in grads_and_vars]
 
-    def apply_gradients(self, grads_and_vars, global_step=None, name=None):
-        with tf.name_scope('apply_gradients'):
-            # update weight
-            update_op = self._opt.apply_gradients(grads_and_vars, global_step)
-            with tf.control_dependencies([update_op]):
-                # clear slot
-                clear_ops = [tf.assign(s, tf.zeros_like(s)) for s in self._accum_slots]
-        return tf.group(*clear_ops, name='update_grad')
+            accum_grads, i, limit = tf.while_loop(cond, body, [accum_grads, 1, self._niter])
+            accum_grads_and_vars = zip(accum_grads, trainable_var)
+        elif(self._method == 2):
+            # Method 2
+            # Produce variable slots first, and add mutiple times of gradient in while_loop
+            # Note: there are some variable solts, so obviously waste some space by method 2.
+            slots_variable = self._create_accum_slots(trainable_var)
+            # trans variable to tensor
+            slots_tensor = [tf.assign(s, tf.zeros_like(s)) for s in slots_variable]
+            # need identity, or get error of while_loop's first argument mismatch: float <--> float_ref
+            slots_tensor = [tf.identity(s) for s in slots_tensor]
+
+            slots_tensor, i, limit = tf.while_loop(cond, body, [slots_tensor, 0, self._niter])
+            accum_grads_and_vars = zip(slots_tensor, trainable_var)
+        else:
+            raise RuntimeError("AccumGradOptimizerAlt not support argument: method={}".format(self._method))
+
+        return accum_grads_and_vars
 
 
 class AccumGradOptimizer(ProxyOptimizer):
