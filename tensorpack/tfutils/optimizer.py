@@ -150,12 +150,18 @@ class AccumGradOptimizerAlt(ProxyOptimizer):
         self._method = int(method)
 
     def _create_accum_slots(self, var_list):
+        org = tf.get_variable_scope().reuse
+        tf.get_variable_scope()._reuse = tf.AUTO_REUSE
         #with tf.variable_scope("", reuse=tf.AUTO_REUSE):
-        return [self._zeros_slot(v, "accum_grad", self._name) for v in  var_list]
+
+        slots = [self._zeros_slot(v, "accum_grad", self._name) for v in  var_list]
+
+        tf.get_variable_scope()._reuse = org
+        return slots
 
     def compute_gradients(self, *args, **kwargs):
         # get trainalbe variable
-        if get_current_tower_context().has_own_variables:
+        if get_current_tower_context() != None and get_current_tower_context().has_own_variables:
             trainable_var = get_current_tower_context().get_collection_in_tower(
                 tf.GraphKeys.TRAINABLE_VARIABLES)
         else:
