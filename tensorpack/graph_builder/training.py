@@ -206,7 +206,7 @@ class SyncMultiGPUReplicatedBuilder(DataParallelBuilder):
         train_op = tf.group(*train_ops, name='train_op')
         accum_op = tf.group(*accum_ops, name='accum_op')
         post_init_op = SyncMultiGPUReplicatedBuilder.get_post_init_ops()
-        return train_op, post_init_op, accum_op, opt._counter
+        return train_op, post_init_op, accum_op, opt._counter, opt._niter
 
 # Adopt from https://github.com/tensorflow/benchmarks/blob/master/scripts/tf_cnn_benchmarks/variable_mgr.py
     @staticmethod
