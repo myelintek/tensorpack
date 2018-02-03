@@ -196,11 +196,10 @@ class SyncMultiGPUReplicatedBuilder(DataParallelBuilder):
             for g, _ in gvs:
                 grad_ops.append(g)
 
-        opt = get_opt_fn()
         grads = allreduce_grads(grad_list)
-        #grads = allreduce_grads_v2(grad_list, opt=opt)
 
         train_ops = []
+        opt = get_opt_fn()
         for idx, grad_and_vars in enumerate(grads):
             with tf.device(raw_devices[idx]):
                 # apply_gradients may create variables. Make them LOCAL_VARIABLES
@@ -234,8 +233,6 @@ class SyncMultiGPUReplicatedBuilder(DataParallelBuilder):
             split_name = v.name.split('/')
             prefix = split_name[0]
             realname = '/'.join(split_name[1:])
-            if 'AccumGrad' in realname:
-                continue
             if prefix in realname:
                 logger.error("[SyncMultiGPUReplicatedBuilder] variable "
                              "{} has its prefix {} appears multiple times in its name!".format(v.name, prefix))
