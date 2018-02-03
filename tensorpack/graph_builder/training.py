@@ -191,7 +191,8 @@ class SyncMultiGPUReplicatedBuilder(DataParallelBuilder):
 
         DataParallelBuilder._check_grad_list(grad_list)
         opt = get_opt_fn()
-        grads = allreduce_grads(grad_list, opt=opt)
+        grads = allreduce_grads(grad_list)
+        #grads = allreduce_grads_v2(grad_list, opt=opt)
 
         train_ops = []
         
