@@ -82,7 +82,7 @@ class LeastLoadedDeviceSetter(object):
         return "LeastLoadedDeviceSetter-{}".format(self.worker_device)
 
 
-def allreduce_grads(all_grads):
+def allreduce_grads(all_grads, opt=None):
     """
     All-reduce average the gradients among devices. Results are broadcasted to all devices.
 
@@ -118,8 +118,7 @@ def allreduce_grads(all_grads):
             all_grads_nccl.append(grads_nccl)
             all_grads_org.append(grads_org)
             all_var.append(vars_org)
-
-    if hasattr(opt, 'run_or_not'):
+    if(opt != None and hasattr(opt, 'run_or_not')):
         new_all_grads = opt.run_or_not(all_grads_nccl, all_grads_org)
     else:
         new_all_grads = all_grads_nccl
