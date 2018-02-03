@@ -199,12 +199,12 @@ class AccumGradOptimizerAlt(ProxyOptimizer):
         #trainable_var += ops.get_collection(ops.GraphKeys._STREAMING_MODEL_PORTS)
 
         # slots
-        self._accum_grads = self._create_accum_slots(trainable_var)
+        self._accum_slots = self._create_accum_slots(trainable_var)
 
         # ==================================
         # clear grads lambda
         def grads_clear():
-            clear_ops = [tf.assign(s, tf.zeros_like(s)) for s in self._accum_grads]
+            clear_ops = [tf.assign(s, tf.zeros_like(s)) for s in self._accum_slots]
             return tf.group(*clear_ops, name='clear_grads')
         # ===================================
 
@@ -215,8 +215,9 @@ class AccumGradOptimizerAlt(ProxyOptimizer):
   
         self._grads = [g for g, _ in grads_and_vars]
 
-        with tf.control_dependencies([cond_clear_grads]):            
-            return zip([tf.assign_add(s, tf.divide(g, self._niter)) for s, (g, _) in zip(self._accum_grads, grads_and_vars)], trainable_var)
+        with tf.control_dependencies([cond_clear_grads]):
+            self._accum_grads = [tf.assign_add(s, tf.divide(g, self._niter)) for s, (g, _) in zip(self._accum_slots, grads_and_vars)]
+            return zip(self._accum_grads, trainable_var)
 
     def run_or_not(self, ok, no):
 
