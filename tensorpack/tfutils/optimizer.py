@@ -216,7 +216,7 @@ class AccumGradOptimizerAlt(ProxyOptimizer):
         self._grads = [g for g, _ in grads_and_vars]
 
         with tf.control_dependencies([cond_clear_grads]):            
-            return zip([tf.assign_add(s, g) for s, (g, _) in zip(self._accum_grads, grads_and_vars)], trainable_var)
+            return zip([tf.assign_add(s, tf.divide(g, self._niter)) for s, (g, _) in zip(self._accum_grads, grads_and_vars)], trainable_var)
 
     def run_or_not(self, ok, no):
 
