@@ -148,14 +148,44 @@ class SyncMultiGPUTrainerReplicated(SingleCostTrainer):
         super(SyncMultiGPUTrainerReplicated, self).__init__()
 
     def _setup_graph(self, input, get_cost_fn, get_opt_fn):
-        self.train_op, post_init_op = self._builder.build(
-            self._make_get_grad_fn(input, get_cost_fn, get_opt_fn), get_opt_fn)
+        self.train_op, post_init_op, self.accum_op, self.accum_counter, self.accum_niter = 
+            self._builder.build(self._make_get_grad_fn(input, get_cost_fn, get_opt_fn), get_opt_fn)
 
         cb = RunOp(
             post_init_op,
             run_before=True, run_as_trigger=True, verbose=True)
         return [cb]
 
+    def run_step(self):
+        """
+        Defines what to do in one iteration. The default is:
+        ``self.hooked_sess.run(self.train_op)``.
+        The behavior can be changed by either defining what is ``train_op``,
+        or overriding this method.
+        """
+        if not hasattr(self, 'train_op'):
+            raise NotImplementedError(
+                "Please either set `Trainer.train_op` or provide an implementation "
+                "of Trainer.run_step()!")
+        if not hasattr(self, 'accum_op'):
+            raise NotImplementedError(
+                "Please either set `Trainer.accum_op` or provide an implementation "
+                "of Trainer.run_step()!")
+        if not hasattr(self, 'accum_counter'):
+            raise NotImplementedError(
+                "Please either set `Trainer.accum_counter` or provide an implementation "
+                "of Trainer.run_step()!")
+        if not hasattr(self, 'accum_niter'):
+            raise NotImplementedError(
+                "Please either set `Trainer.accum_counter` or provide an implementation "
+                "of Trainer.run_step()!")
+
+        counter, niter = self.hooked_sess.run([self.accum_counter, self.accum_niter])
+        if(counter == niter):
+            self.hooked_sess.run(self.train_op)
+        else:
+            self.hooked_sess.run(self.accum_op)
+            
 
 class DistributedTrainerBase(SingleCostTrainer):
 
