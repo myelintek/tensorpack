@@ -151,8 +151,10 @@ class SyncMultiGPUTrainerReplicated(SingleCostTrainer):
         self.train_op, post_init_op, self.accum_op = \
             self._builder.build(self._make_get_grad_fn(input, get_cost_fn, get_opt_fn), get_opt_fn)
 
-        self._counter = 0
-        self._niter = get_opt_fn()._niter
+        opt = get_opt_fn()
+        if hasattr(opt, '_niter'):
+            self._counter = 0
+            self._niter = opt._niter
 
         cb = RunOp(
             post_init_op,
@@ -175,11 +177,14 @@ class SyncMultiGPUTrainerReplicated(SingleCostTrainer):
                 "Please either set `Trainer.accum_op` or provide an implementation "
                 "of Trainer.run_step()!")
 
-        if(self._counter % self._niter == self._niter-1):
+        if not hasattr(self, '_niter'):
             self.hooked_sess.run(self.train_op)
-        else:
-            self.hooked_sess.run(self.accum_op)
-        self._counter+=1
+        else
+            if(self._counter % self._niter == self._niter-1):
+                self.hooked_sess.run(self.train_op)
+            else:
+                self.hooked_sess.run(self.accum_op)
+            self._counter+=1
 
             
 
