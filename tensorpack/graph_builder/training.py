@@ -190,10 +190,11 @@ class SyncMultiGPUReplicatedBuilder(DataParallelBuilder):
             use_vs=[False] + [True] * (len(self.towers) - 1))
 
         DataParallelBuilder._check_grad_list(grad_list)
-        grads = allreduce_grads(grad_list)
+        opt = get_opt_fn()
+        grads = allreduce_grads(grad_list, opt=opt)
 
         train_ops = []
-        opt = get_opt_fn()
+        
         for idx, grad_and_vars in enumerate(grads):
             with tf.device(raw_devices[idx]):
                 # apply_gradients may create variables. Make them LOCAL_VARIABLES
