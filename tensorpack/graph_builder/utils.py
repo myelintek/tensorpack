@@ -81,12 +81,15 @@ class LeastLoadedDeviceSetter(object):
     def __str__(self):
         return "LeastLoadedDeviceSetter-{}".format(self.worker_device)
 
+
 def allreduce_grads(all_grads):
     """
     All-reduce average the gradients among devices. Results are broadcasted to all devices.
+
     Args:
         all_grads (K x N x 2): A list of K lists. Each of the list is a list of N (grad, var) tuples.
             The variables have to be the same across the K lists.
+
     Returns:
         (K x N x 2): same as input, but each grad is replaced by the average over K lists.
     """
@@ -110,56 +113,6 @@ def allreduce_grads(all_grads):
 
     # transpose
     ret = [k for k in zip(*new_all_grads)]
-    return ret
-
-def allreduce_grads_v2(all_grads, opt=None):
-    """
-    All-reduce average the gradients among devices. Results are broadcasted to all devices.
-
-    Args:
-        all_grads (K x N x 2): A list of K lists. Each of the list is a list of N (grad, var) tuples.
-            The variables have to be the same across the K lists.
-
-    Returns:
-        (K x N x 2): same as input, but each grad is replaced by the average over K lists.
-    """
-    from tensorflow.contrib import nccl
-    nr_tower = len(all_grads)
-    if nr_tower == 1:
-        return all_grads
-    all_grads_nccl = []  # NVar * NGPU * 2
-    all_grads_org = []  # NVar * NGPU * 2
-    all_var = []
-    with tf.name_scope('AvgGrad'):
-        for grad_and_vars in zip(*all_grads):
-            v = grad_and_vars[0][1]
-            grads = [g for g, _ in grad_and_vars]
-            summed = nccl.all_sum(grads)
-
-            vars_org = []
-            grads_nccl = []
-            grads_org = []
-            for (g0, v), g in zip(grad_and_vars, summed):
-                with tf.device(g.device):
-                    g = tf.multiply(g, 1.0 / nr_tower)
-                    grads_nccl.append(g)
-                    vars_org.append(v)
-                    grads_org.append(g0)
-            all_grads_nccl.append(grads_nccl)
-            all_grads_org.append(grads_org)
-            all_var.append(vars_org)
-    if(opt != None and hasattr(opt, 'run_or_not')):
-        new_all_grads = opt.run_or_not(all_grads_nccl, all_grads_org)
-    else:
-        new_all_grads = all_grads_nccl
-    # transpose
-    ret = []
-    for gs, vs in zip(zip(*new_all_grads), zip(*all_var)):
-        gvs = []
-        for g, v in zip(gs, vs):
-            #for g, v in zip(gs, vs):
-            gvs.append((g,v))
-        ret.append(gvs)
     return ret
 
 
