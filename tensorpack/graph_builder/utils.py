@@ -97,22 +97,40 @@ def allreduce_grads(all_grads):
     nr_tower = len(all_grads)
     if nr_tower == 1:
         return all_grads
-    new_all_grads = []  # NVar * NGPU * 2
+    all_grads_nccl = []  # NVar * NGPU * 2
+    all_grads_org = []  # NVar * NGPU * 2
+    all_var = []
     with tf.name_scope('AvgGrad'):
         for grad_and_vars in zip(*all_grads):
             v = grad_and_vars[0][1]
             grads = [g for g, _ in grad_and_vars]
             summed = nccl.all_sum(grads)
 
-            grads_for_a_var = []
-            for (_, v), g in zip(grad_and_vars, summed):
+            vars_org = []
+            grads_nccl = []
+            grads_org = []
+            for (g0, v), g in zip(grad_and_vars, summed):
                 with tf.device(g.device):
                     g = tf.multiply(g, 1.0 / nr_tower)
-                    grads_for_a_var.append((g, v))
-            new_all_grads.append(grads_for_a_var)
+                    grads_nccl.append(g)
+                    vars_org.append(v)
+                    grads_org.append(g0)
+            all_grads_nccl.append(grads_nccl)
+            all_grads_org.append(grads_org)
+            all_var.append(vars_org)
 
+    if hasattr(opt, 'run_or_not'):
+        new_all_grads = opt.run_or_not(all_grads_nccl, all_grads_org)
+    else:
+        new_all_grads = all_grads_nccl
     # transpose
-    ret = [k for k in zip(*new_all_grads)]
+    ret = []
+    for gs, vs in zip(zip(*new_all_grads), zip(*all_var)):
+        gvs = []
+        for g, v in zip(gs, vs):
+            #for g, v in zip(gs, vs):
+            gvs.append((g,v))
+        ret.append(gvs)
     return ret
 
 
