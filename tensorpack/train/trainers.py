@@ -148,8 +148,8 @@ class SyncMultiGPUTrainerReplicated(SingleCostTrainer):
         super(SyncMultiGPUTrainerReplicated, self).__init__()
 
     def _setup_graph(self, input, get_cost_fn, get_opt_fn):
-        self.train_op, post_init_op, self.accum_op = \
-            self._builder.build(self._make_get_grad_fn(input, get_cost_fn, get_opt_fn), get_opt_fn)
+        self.train_op, post_init_op, self.accum_op = self._builder.build(
+            self._make_get_grad_fn(input, get_cost_fn, get_opt_fn), get_opt_fn)
 
         opt = get_opt_fn()
         if hasattr(opt, '_niter'):
@@ -179,7 +179,7 @@ class SyncMultiGPUTrainerReplicated(SingleCostTrainer):
 
         if not hasattr(self, '_niter'):
             self.hooked_sess.run(self.train_op)
-        else
+        else:
             if(self._counter % self._niter == self._niter-1):
                 self.hooked_sess.run(self.train_op)
             else:
