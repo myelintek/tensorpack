@@ -124,6 +124,7 @@ if __name__ == '__main__':
                         help='variants of resnet to use', default='resnet')
     parser.add_argument('--iter_size', help='accumulation', type=int, default=1)
     parser.add_argument('--xla', type=bool, default=True, help='Turn xla via JIT on')
+    parser.add_argument('--logdir', help='logdir', default='train_log/imagenet-resnet-d')
     args = parser.parse_args()
 
     if args.gpu:
@@ -136,8 +137,7 @@ if __name__ == '__main__':
         ds = get_data('val', batch)
         eval_on_ILSVRC12(model, get_model_loader(args.load), ds)
     else:
-        logger.set_logger_dir(
-            os.path.join('train_log', 'imagenet-resnet-d' + str(args.depth)))
+        logger.set_logger_dir(args.logdir)
 
         config = get_config(model, fake=args.fake, xla=args.xla)
         if args.load:
