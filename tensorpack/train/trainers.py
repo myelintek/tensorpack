@@ -25,6 +25,9 @@ from ..graph_builder.utils import override_to_local_variable
 
 from .tower import SingleCostTrainer
 
+from tensorflow.python.client import timeline
+
+
 __all__ = ['SimpleTrainer',
            'QueueInputTrainer',
            'SyncMultiGPUTrainer',
