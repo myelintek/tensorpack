@@ -219,12 +219,12 @@ class AccumGradOptimizerAlt(ProxyOptimizer):
             self._accum_grads = [tf.assign_add(s, tf.divide(g, self._niter)) for s, (g, _) in zip(self._accum_slots, grads_and_vars)]
             return zip(self._accum_grads, trainable_var)
 
-    def apply_gradients(self, *args, **kwargs):
-        def update_grad():
-            update_op = self._opt.apply_gradients(*args, **kwargs)
-            return update_op
-
-        return tf.cond(self._pred, update_grad, tf.no_op, name='cond_apply_gradients')
+    #def apply_gradients(self, *args, **kwargs):
+    #    def update_grad():
+    #        update_op = self._opt.apply_gradients(*args, **kwargs)
+    #        return update_op
+#
+#        return tf.cond(self._pred, update_grad, tf.no_op, name='cond_apply_gradients')
 
 
 class AccumGradOptimizer(ProxyOptimizer):

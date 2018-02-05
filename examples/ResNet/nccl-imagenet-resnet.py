@@ -22,10 +22,10 @@ from resnet_model import (
     preresnet_group, preresnet_basicblock, preresnet_bottleneck,
     resnet_group, resnet_basicblock, resnet_bottleneck, se_resnet_bottleneck,
     resnet_backbone)
-from tensorpack.tfutils.optimizer import AccumGradOptimizer
+from tensorpack.tfutils.optimizer import AccumGradOptimizerAlt
 import tensorflow as tf
 
-TOTAL_BATCH_SIZE = 256
+TOTAL_BATCH_SIZE = 512
 
 
 class Model(ImageNetModel):
@@ -57,12 +57,12 @@ class Model(ImageNetModel):
                 preresnet_group if self.mode == 'preact' else resnet_group, self.block_func)
 
     def _get_optimizer(self):
-        lr = tf.get_variable('learning_rate', initializer=0.1, trainable=False)
+        lr = tf.get_variable('learning_rate', initializer=0.1*self.iter_size, trainable=False)
         tf.summary.scalar('learning_rate', lr)
         opt = tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
 
         if self.iter_size != 1:
-            opt = AccumGradOptimizer(opt, self.iter_size)
+            opt = AccumGradOptimizerAlt(opt, self.iter_size)
         return opt
 
 def get_data(name, batch):
@@ -72,7 +72,7 @@ def get_data(name, batch):
         args.data, name, batch, augmentors)
 
 
-def get_config(model, fake=False, xla=False):
+def get_config(model, fake=False):
     nr_tower = max(get_nr_gpu(), 1)
     batch = TOTAL_BATCH_SIZE // nr_tower
 
@@ -88,7 +88,7 @@ def get_config(model, fake=False, xla=False):
         callbacks = [
             ModelSaver(),
             ScheduledHyperParamSetter('learning_rate',
-                                      [(10, 1e-2), (20, 1e-3), (85, 1e-4), (95, 1e-5), (105, 1e-6)]),
+                                      [(10, 1e-2*model.iter_size), (20, 1e-3*model.iter_size), (85, 1e-4*model.iter_size), (95, 1e-5*model.iter_size), (105, 1e-6*model.iter_size)]),
             HumanHyperParamSetter('learning_rate'),
         ]
         infs = [ClassificationError('wrong-top1', 'val-error-top1'),
@@ -101,19 +101,12 @@ def get_config(model, fake=False, xla=False):
             callbacks.append(DataParallelInferenceRunner(
                 dataset_val, infs, list(range(nr_tower))))
 
-        config = tf.ConfigProto()
-        jit_level = 0
-        if xla:
-            # Turns on XLA JIT compilation
-            jit_level = tf.OptimizerOptions.ON_1
-        config.graph_options.optimizer_options.global_jit_level = jit_level
-
     return TrainConfig(
         model=model,
         dataflow=dataset_train,
         callbacks=callbacks,
-        steps_per_epoch=10,
-        max_epoch=1,
+        steps_per_epoch=2500,
+        max_epoch=30,
         nr_tower=nr_tower
     )
 
@@ -132,7 +125,6 @@ if __name__ == '__main__':
     parser.add_argument('--mode', choices=['resnet', 'preact', 'se'],
                         help='variants of resnet to use', default='resnet')
     parser.add_argument('--iter_size', help='accumulation', type=int, default=1)
-    parser.add_argument('--xla', type=bool, default=True, help='Turn xla via JIT on')
     args = parser.parse_args()
 
     if args.gpu:
@@ -148,7 +140,7 @@ if __name__ == '__main__':
         logger.set_logger_dir(
             os.path.join('train_log', 'imagenet-resnet-d' + str(args.depth)))
 
-        config = get_config(model, fake=args.fake, xla=args.xla)
+        config = get_config(model, fake=args.fake)
         if args.load:
             config.session_init = get_model_loader(args.load)
         trainer = SyncMultiGPUTrainerReplicated(max(get_nr_gpu(), 1))
