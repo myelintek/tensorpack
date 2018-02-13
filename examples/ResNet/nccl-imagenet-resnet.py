@@ -25,7 +25,7 @@ from resnet_model import (
 from tensorpack.tfutils.optimizer import AccumGradOptimizerAlt
 import tensorflow as tf
 
-TOTAL_BATCH_SIZE = 512
+LIMIT_BATCH_SIZE = 512
 
 
 class Model(ImageNetModel):
@@ -57,7 +57,8 @@ class Model(ImageNetModel):
                 preresnet_group if self.mode == 'preact' else resnet_group, self.block_func)
 
     def _get_optimizer(self):
-        lr = tf.get_variable('learning_rate', initializer=0.1*self.iter_size, trainable=False)
+        #lr = tf.get_variable('learning_rate', initializer=0.1*self.iter_size, trainable=False)
+        lr = tf.get_variable('learning_rate', initializer=0.1, trainable=False)
         tf.summary.scalar('learning_rate', lr)
         opt = tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
 
@@ -74,7 +75,7 @@ def get_data(name, batch):
 
 def get_config(model, fake=False):
     nr_tower = max(get_nr_gpu(), 1)
-    batch = TOTAL_BATCH_SIZE // nr_tower
+    batch = args.batch // nr_tower
 
     if fake:
         logger.info("For benchmark, batch size is fixed to 64 per tower.")
@@ -85,12 +86,18 @@ def get_config(model, fake=False):
         logger.info("Running on {} towers. Batch size per tower: {}".format(nr_tower, batch))
         dataset_train = get_data('train', batch)
         dataset_val = get_data('val', batch)
+        BASE_LR = 0.1 * (args.batch // 256) * args.iter_size
         callbacks = [
             ModelSaver(),
-            ScheduledHyperParamSetter('learning_rate',
-                                      [(10, 1e-2*model.iter_size), (20, 1e-3*model.iter_size), (85, 1e-4*model.iter_size), (95, 1e-5*model.iter_size), (105, 1e-6*model.iter_size)]),
-            HumanHyperParamSetter('learning_rate'),
+            ScheduledHyperParamSetter(
+                'learning_rate', [(30, BASE_LR * 1e-1), (60, BASE_LR * 1e-2),
+                                  (85, BASE_LR * 1e-3), (95, BASE_LR * 1e-4), (105, BASE_LR * 1e-5)]),
         ]
+        if BASE_LR != 0.1:
+            callbacks.append(
+                ScheduledHyperParamSetter(
+                    'learning_rate', [(0, 0.1), (3, BASE_LR)], interp='linear'))
+
         infs = [ClassificationError('wrong-top1', 'val-error-top1'),
                 ClassificationError('wrong-top5', 'val-error-top5')]
         if nr_tower == 1:
@@ -105,8 +112,8 @@ def get_config(model, fake=False):
         model=model,
         dataflow=dataset_train,
         callbacks=callbacks,
-        steps_per_epoch=2500,
-        max_epoch=30,
+        steps_per_epoch=(1280000 // args.batch),
+        max_epoch=120,
         nr_tower=nr_tower
     )
 
@@ -122,9 +129,12 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--depth', help='resnet depth',
                         type=int, default=18, choices=[18, 34, 50, 101, 152])
     parser.add_argument('--eval', action='store_true')
+    parser.add_argument('--batch', help='total batch size. need to be multiple of 256 to get similar accuracy.',
+                        default=256, type=int)
     parser.add_argument('--mode', choices=['resnet', 'preact', 'se'],
                         help='variants of resnet to use', default='resnet')
     parser.add_argument('--iter_size', help='accumulation', type=int, default=1)
+    parser.add_argument('--logdir', help='logdir', default='train_log/imagenet-resnet-d')
     args = parser.parse_args()
 
     if args.gpu:
@@ -137,8 +147,7 @@ if __name__ == '__main__':
         ds = get_data('val', batch)
         eval_on_ILSVRC12(model, get_model_loader(args.load), ds)
     else:
-        logger.set_logger_dir(
-            os.path.join('train_log', 'imagenet-resnet-d' + str(args.depth)))
+        logger.set_logger_dir(args.logdir)
 
         config = get_config(model, fake=args.fake)
         if args.load:
