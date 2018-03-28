@@ -159,8 +159,8 @@ class InferenceRunner(InferenceRunnerBase):
         # iterate over the data, and run the hooked session
         self._input_source.reset_state()
         with _inference_context():
-            for _ in tqdm.trange(self._size, **get_tqdm_kwargs()):
-                self._hooked_sess.run(fetches=[])
+            #for _ in tqdm.trange(self._size, **get_tqdm_kwargs()):
+            self._hooked_sess.run(fetches=[])
         for inf in self.infs:
             inf.trigger_epoch()
 

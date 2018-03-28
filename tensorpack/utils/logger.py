@@ -17,7 +17,7 @@ __all__ = ['set_logger_dir', 'auto_set_dir', 'get_logger_dir']
 class _MyFormatter(logging.Formatter):
     def format(self, record):
         #date = colored('[%(asctime)s @%(filename)s:%(lineno)d]', 'green')
-        date = colored('%(asctime)s', 'green')
+        date = '%(asctime)s'
         msg = '%(message)s'
         if record.levelno == logging.WARNING:
             fmt = date + ' ' + colored('[WRN]', 'red', attrs=['blink']) + ' ' + msg
