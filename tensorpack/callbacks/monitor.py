@@ -377,12 +377,12 @@ class ScalarPrinter(TrainingMonitor):
         self._dic = {}
         current_epoch = round(self.global_step / float(self.trainer.steps_per_epoch), 3)
         if accuracy is not None:
-            summary_str = "{} (epoch {}): loss = {:.5g}, lr = {:.5g}, accuracy = {:.5g}".format(
+            summary_str = "{} (epoch {}): loss = {:.5g}, lr = {:.5f}, accuracy = {:.5g}".format(
                 ("Training" if isTraining else "Validation"),
                 current_epoch,
-                loss,
-                lr,
-                accuracy)
+                float(loss),
+                float(lr),
+                float(accuracy))
             logger.info(summary_str)
 
 
