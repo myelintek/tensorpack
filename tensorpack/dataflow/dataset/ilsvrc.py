@@ -12,8 +12,9 @@ from ...utils.loadcaffe import get_caffe_pb
 from ...utils.fs import mkdir_p, download, get_dataset_path
 from ...utils.timer import timed_operation
 from ..base import RNGDataFlow
+from ..format import LMDBDataDecoder, LMDBData
 
-__all__ = ['ILSVRCMeta', 'ILSVRC12', 'ILSVRC12Files']
+__all__ = ['ILSVRCMeta', 'ILSVRC12', 'ILSVRC12Files', 'ILSVRC12LMDB']
 
 CAFFE_ILSVRC12_URL = "http://dl.caffe.berkeleyvision.org/caffe_ilsvrc12.tar.gz"
 
@@ -117,6 +118,35 @@ def _guess_dir_structure(dir):
         "Assuming directory {} has {} structure.".format(
             dir, dir_structure))
     return dir_structure
+
+
+class ILSVRC12LMDB(LMDBDataDecoder):
+    def __init__(self, dir, name, meta_dir=None,
+                 shuffle=None, dir_structure=None):
+        assert name in ['train', 'test', 'val'], name
+        assert os.path.isdir(dir), dir
+        self.full_dir = dir
+        self.name = name
+        assert os.path.isdir(self.full_dir), self.full_dir
+        assert meta_dir is None or os.path.isdir(meta_dir), meta_dir
+
+
+        self.cpb = get_caffe_pb()
+        lmdb_data = LMDBData(self.full_dir, False, None)
+        logger.warn("Caffe LMDB format doesn't store jpeg-compressed images, \
+        it's not recommended due to its inferior performance.")
+        super(ILSVRC12LMDB, self).__init__(lmdb_data, self._decoder)
+
+    def _decoder(k, v):
+        try:
+            datum = self.cpb.Datum()
+            datum.ParseFromString(v)
+            img = np.fromstring(datum.data, dtype=np.uint8)
+            img = img.reshape(datum.channels, datum.height, datum.width)
+        except Exception:
+            log_once("Cannot read key {}".format(k), 'warn')
+            return None
+        return [img.transpose(1, 2, 0), datum.label]
 
 
 class ILSVRC12Files(RNGDataFlow):

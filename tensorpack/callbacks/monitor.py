@@ -370,7 +370,7 @@ class ScalarPrinter(TrainingMonitor):
                         accuracy = v
                     elif "loss" in k:
                         loss = v
-                    elif "lr" in k:
+                    elif "lr" or "learning_rate" in k:
                         lr = v
                     if "validation" in k:
                         isTraining = False
