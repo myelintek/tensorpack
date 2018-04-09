@@ -195,12 +195,15 @@ class ImageNetModel(ModelDesc):
     @staticmethod
     def compute_loss_and_error(logits, label):
         loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=label)
-        loss = tf.reduce_mean(loss, name='xentropy-loss')
+        loss = tf.reduce_mean(loss, name='cross_entropy_loss')
 
         def prediction_incorrect(logits, label, topk=1, name='incorrect_vector'):
             with tf.name_scope('prediction_incorrect'):
                 x = tf.logical_not(tf.nn.in_top_k(logits, label, topk))
             return tf.cast(x, tf.float32, name=name)
+
+        acc = tf.to_float(tf.nn.in_top_k(logits, label, 1))
+        add_moving_summary(tf.reduce_mean(acc, name='accuracy'))
 
         wrong = prediction_incorrect(logits, label, 1, name='wrong-top1')
         add_moving_summary(tf.reduce_mean(wrong, name='train-error-top1'))

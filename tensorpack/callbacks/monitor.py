@@ -368,9 +368,9 @@ class ScalarPrinter(TrainingMonitor):
                     # logger.info('{}: {:.5g}'.format(k, v))
                     if "accuracy" in k:
                         accuracy = v
-                    elif "loss" in k:
+                    elif "cross_entropy_loss" in k:
                         loss = v
-                    elif "lr" or "learning_rate" in k:
+                    elif "learning_rate" in k:
                         lr = v
                     if "validation" in k:
                         isTraining = False

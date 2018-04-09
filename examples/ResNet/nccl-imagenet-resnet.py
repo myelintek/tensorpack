@@ -29,14 +29,14 @@ LIMIT_BATCH_SIZE = 512
 
 
 class Model(ImageNetModel):
-    def __init__(self, depth, data_format='NCHW', mode='resnet', iter_size=1):
+    def __init__(self, depth, data_format='NCHW', mode='resnet', small_chunk=1):
         super(Model, self).__init__(data_format)
 
         if mode == 'se':
             assert depth >= 50
 
         self.mode = mode
-        self.iter_size = iter_size
+        self.small_chunk = small_chunk
         basicblock = preresnet_basicblock if mode == 'preact' else resnet_basicblock
         bottleneck = {
             'resnet': resnet_bottleneck,
@@ -57,13 +57,13 @@ class Model(ImageNetModel):
                 preresnet_group if self.mode == 'preact' else resnet_group, self.block_func)
 
     def _get_optimizer(self):
-        #lr = tf.get_variable('learning_rate', initializer=0.1*self.iter_size, trainable=False)
+        #lr = tf.get_variable('learning_rate', initializer=0.1*self.small_chunk, trainable=False)
         lr = tf.get_variable('learning_rate', initializer=0.1, trainable=False)
         tf.summary.scalar('learning_rate', lr)
         opt = tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
 
-        if self.iter_size != 1:
-            opt = AccumGradOptimizerAlt(opt, self.iter_size)
+        if self.small_chunk != 1:
+            opt = AccumGradOptimizerAlt(opt, self.small_chunk)
         return opt
 
 def get_data(name, batch):
@@ -75,7 +75,7 @@ def get_data(name, batch):
 
 def get_config(model, fake=False):
     nr_tower = max(get_nr_gpu(), 1)
-    batch = args.batch // nr_tower
+    batch = args.batch_size // nr_tower
 
     if fake:
         logger.info("For benchmark, batch size is fixed to 64 per tower.")
@@ -86,13 +86,14 @@ def get_config(model, fake=False):
         logger.info("Running on {} towers. Batch size per tower: {}".format(nr_tower, batch))
         dataset_train = get_data('train', batch)
         dataset_val = get_data('val', batch)
-        BASE_LR = 0.1 * (args.batch // 256) * args.iter_size
+        BASE_LR = 0.1 * (args.batch_size // 256) * args.small_chunk
         callbacks = [
-            ModelSaver(),
+            #ModelSaver(),
             ScheduledHyperParamSetter(
                 'learning_rate', [(30, BASE_LR * 1e-1), (60, BASE_LR * 1e-2),
                                   (85, BASE_LR * 1e-3), (95, BASE_LR * 1e-4), (105, BASE_LR * 1e-5)]),
         ]
+        logger.info("Base learning rate: {}".format(BASE_LR))
         if BASE_LR != 0.1:
             callbacks.append(
                 ScheduledHyperParamSetter(
@@ -108,12 +109,17 @@ def get_config(model, fake=False):
             callbacks.append(DataParallelInferenceRunner(
                 dataset_val, infs, list(range(nr_tower))))
 
+        monitors = [TFEventWriter(), JSONWriter(), ScalarPrinter(enable_step=True, enable_epoch=True)]
+        extra_callbacks = [MovingAverageSummary(), MergeAllSummaries(period=50), RunUpdateOps()]
+
     return TrainConfig(
         model=model,
         dataflow=dataset_train,
         callbacks=callbacks,
-        steps_per_epoch=(1280000 // args.batch),
-        max_epoch=120,
+        monitors=monitors,
+        extra_callbacks=extra_callbacks,
+        steps_per_epoch=(1280000 // args.batch_size),
+        max_epoch=args.epoch,
         nr_tower=nr_tower
     )
 
@@ -127,27 +133,28 @@ if __name__ == '__main__':
     parser.add_argument('--data_format', help='specify NCHW or NHWC',
                         type=str, default='NCHW')
     parser.add_argument('-d', '--depth', help='resnet depth',
-                        type=int, default=18, choices=[18, 34, 50, 101, 152])
+                        type=int, default=50, choices=[18, 34, 50, 101, 152])
+    parser.add_argument('--epoch', help='total epoch', type=int, default=30)
     parser.add_argument('--eval', action='store_true')
-    parser.add_argument('--batch', help='total batch size. need to be multiple of 256 to get similar accuracy.',
+    parser.add_argument('--batch_size', help='total batch size. need to be multiple of 256 to get similar accuracy.',
                         default=256, type=int)
     parser.add_argument('--mode', choices=['resnet', 'preact', 'se'],
                         help='variants of resnet to use', default='resnet')
-    parser.add_argument('--iter_size', help='accumulation', type=int, default=1)
+    parser.add_argument('--small_chunk', help='accumulation', type=int, default=1)
     parser.add_argument('--logdir', help='logdir', default='train_log/imagenet-resnet-d')
     args = parser.parse_args()
 
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
-    model = Model(args.depth, args.data_format, args.mode, iter_size=args.iter_size)
+    model = Model(args.depth, args.data_format, args.mode, small_chunk=args.small_chunk)
     
     if args.eval:
         batch = 128    # something that can run on one gpu
         ds = get_data('val', batch)
         eval_on_ILSVRC12(model, get_model_loader(args.load), ds)
     else:
-        logger.set_logger_dir(args.logdir)
+        logger.set_logger_dir(args.logdir, action='d')
 
         config = get_config(model, fake=args.fake)
         if args.load:
