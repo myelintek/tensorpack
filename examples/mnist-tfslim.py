@@ -79,22 +79,15 @@ def get_data():
 def get_config():
     logger.auto_set_dir()
     dataset_train, dataset_test = get_data()
-    from tensorpack.callbacks import (
-        TFEventWriter, JSONWriter, ScalarPrinter,
-        MovingAverageSummary, ProgressBar, MergeAllSummaries, RunUpdateOps)
-    monitors = [TFEventWriter(), JSONWriter(), ScalarPrinter(enable_step=True)]
-    callbacks = [MovingAverageSummary(), MergeAllSummaries(period=100), RunUpdateOps()]
     return TrainConfig(
         model=Model(),
         dataflow=dataset_train,
         callbacks=[
-            #ModelSaver(),
+            ModelSaver(),
             InferenceRunner(
                 dataset_test,
                 ScalarStats(['cross_entropy_loss', 'accuracy'])),
         ],
-        monitors=monitors,
-        extra_callbacks=callbacks,
         max_epoch=100,
     )
 
