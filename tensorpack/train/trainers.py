@@ -151,8 +151,13 @@ class SyncMultiGPUTrainerReplicated(SingleCostTrainer):
         super(SyncMultiGPUTrainerReplicated, self).__init__()
 
     def _setup_graph(self, input, get_cost_fn, get_opt_fn):
-        self.train_op, post_init_op = self._builder.build(
+        self.train_op, post_init_op, self.accum_op = self._builder.build(
             self._make_get_grad_fn(input, get_cost_fn, get_opt_fn), get_opt_fn)
+
+        opt = get_opt_fn()
+        if hasattr(opt, '_niter'):
+            self._counter = 0
+            self._niter = opt._niter
 
         cb = RunOp(
             post_init_op,
@@ -160,19 +165,31 @@ class SyncMultiGPUTrainerReplicated(SingleCostTrainer):
         return [cb]
 
     def run_step(self):
-        # Create a timeline for the last loop and export to json to view with
-        # chrome://tracing/.
-        if self.loop._local_step == self.loop.steps_per_epoch - 1:
-            run_metadata = tf.RunMetadata()
-            self.hooked_sess.run(self.train_op,
-                options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
-                run_metadata=run_metadata)
-            trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-            with open('timeline.ctf.json', 'w') as trace_file:
-                trace_file.write(trace.generate_chrome_trace_format())
-        else:
-            self.hooked_sess.run(self.train_op)
+        """
+        Defines what to do in one iteration. The default is:
+        ``self.hooked_sess.run(self.train_op)``.
+        The behavior can be changed by either defining what is ``train_op``,
+        or overriding this method.
+        """
+        if not hasattr(self, 'train_op'):
+            raise NotImplementedError(
+                "Please either set `Trainer.train_op` or provide an implementation "
+                "of Trainer.run_step()!")
+        if not hasattr(self, 'accum_op'):
+            raise NotImplementedError(
+                "Please either set `Trainer.accum_op` or provide an implementation "
+                "of Trainer.run_step()!")
 
+        if not hasattr(self, '_niter'):
+            self.hooked_sess.run(self.train_op)
+        else:
+            if(self._counter % self._niter == self._niter-1):
+                self.hooked_sess.run(self.train_op)
+            else:
+                self.hooked_sess.run(self.accum_op)
+            self._counter+=1
+
+            
 
 class DistributedTrainerBase(SingleCostTrainer):
 
