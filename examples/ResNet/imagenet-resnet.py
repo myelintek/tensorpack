@@ -22,16 +22,20 @@ from resnet_model import (
     preresnet_group, preresnet_basicblock, preresnet_bottleneck,
     resnet_group, resnet_basicblock, resnet_bottleneck, se_resnet_bottleneck,
     resnet_backbone)
+from tensorpack.tfutils.optimizer import AccumGradOptimizer
+import tensorflow as tf
+
 
 
 class Model(ImageNetModel):
-    def __init__(self, depth, data_format='NCHW', mode='resnet'):
+    def __init__(self, depth, data_format='NCHW', mode='resnet', iter_size=1):
         super(Model, self).__init__(data_format)
 
         if mode == 'se':
             assert depth >= 50
 
         self.mode = mode
+        self.iter_size = iter_size
         basicblock = preresnet_basicblock if mode == 'preact' else resnet_basicblock
         bottleneck = {
             'resnet': resnet_bottleneck,
@@ -51,6 +55,14 @@ class Model(ImageNetModel):
                 image, self.num_blocks,
                 preresnet_group if self.mode == 'preact' else resnet_group, self.block_func)
 
+    def _get_optimizer(self):
+        lr = tf.get_variable('learning_rate', initializer=0.1, trainable=False)
+        tf.summary.scalar('learning_rate', lr)
+        opt = tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
+
+        if self.iter_size != 1:
+            opt = AccumGradOptimizer(opt, self.iter_size)
+        return opt
 
 def get_data(name, batch):
     isTrain = name == 'train'
@@ -121,12 +133,13 @@ if __name__ == '__main__':
                         help='total batch size. 32 per GPU gives best accuracy, higher values should be similarly good')
     parser.add_argument('--mode', choices=['resnet', 'preact', 'se'],
                         help='variants of resnet to use', default='resnet')
+    parser.add_argument('--iter_size', help='accumulation', type=int, default=1)
     args = parser.parse_args()
 
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
-    model = Model(args.depth, args.data_format, args.mode)
+    model = Model(args.depth, args.data_format, args.mode, iter_size=args.iter_size)
     if args.eval:
         batch = 128    # something that can run on one gpu
         ds = get_data('val', batch)
