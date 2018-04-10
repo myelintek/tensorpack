@@ -214,6 +214,11 @@ class SyncMultiGPUReplicatedBuilder(DataParallelBuilder):
 
         DataParallelBuilder._check_grad_list(grad_list)
 
+        grad_ops = []
+        for gvs in zip(*grad_list):
+            for g, _ in gvs:
+                grad_ops.append(g)
+
         if self._mode == 'hierarchical' and len(raw_devices) < 8:
             logger.warn("mode='hierarchical' require >= 8 GPUs. Fallback to mode='cpu'.")
             self._mode = 'cpu'
@@ -261,10 +266,11 @@ class SyncMultiGPUReplicatedBuilder(DataParallelBuilder):
                         train_ops.append(opt.apply_gradients(
                             grad_and_vars, name='apply_grad_{}'.format(idx)))
         train_op = tf.group(*train_ops, name='train_op')
+        accum_op = tf.group(*grad_ops, name='accum_op')
 
         with tf.name_scope('sync_variables'):
             post_init_op = SyncMultiGPUReplicatedBuilder.get_post_init_ops()
-        return train_op, post_init_op
+        return train_op, post_init_op, accum_op
 
 # Adopt from https://github.com/tensorflow/benchmarks/blob/master/scripts/tf_cnn_benchmarks/variable_mgr.py
     @staticmethod
@@ -287,6 +293,8 @@ class SyncMultiGPUReplicatedBuilder(DataParallelBuilder):
             split_name = v.name.split('/')
             prefix = split_name[0]
             realname = '/'.join(split_name[1:])
+            if 'AccumGrad' in realname:
+                continue
             if prefix in realname:
                 logger.error("[SyncMultiGPUReplicatedBuilder] variable "
                              "{} has its prefix {} appears multiple times in its name!".format(v.name, prefix))

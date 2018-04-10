@@ -25,6 +25,7 @@ from ..graph_builder.distributed import DistributedReplicatedBuilder, Distribute
 from ..graph_builder.utils import override_to_local_variable
 
 from .tower import SingleCostTrainer
+from tensorflow.python.client import timeline
 
 __all__ = ['SimpleTrainer',
            'QueueInputTrainer',
@@ -163,13 +164,42 @@ class SyncMultiGPUTrainerReplicated(SingleCostTrainer):
         super(SyncMultiGPUTrainerReplicated, self).__init__()
 
     def _setup_graph(self, input, get_cost_fn, get_opt_fn):
-        self.train_op, post_init_op = self._builder.build(
+        self.train_op, post_init_op, self.accum_op = self._builder.build(
             self._make_get_grad_fn(input, get_cost_fn, get_opt_fn), get_opt_fn)
+        opt = get_opt_fn()
+        if hasattr(opt, '_niter'):
+            self._counter = 0
+            self._niter = opt._niter
 
         cb = RunOp(
             post_init_op,
             run_before=True, run_as_trigger=True, verbose=True)
         return [cb]
+
+    def run_step(self):
+        """
+        Defines what to do in one iteration. The default is:
+        ``self.hooked_sess.run(self.train_op)``.
+        The behavior can be changed by either defining what is ``train_op``,
+        or overriding this method.
+        """
+        if not hasattr(self, 'train_op'):
+            raise NotImplementedError(
+                "Please either set `Trainer.train_op` or provide an implementation "
+                "of Trainer.run_step()!")
+        if not hasattr(self, 'accum_op'):
+            raise NotImplementedError(
+                "Please either set `Trainer.accum_op` or provide an implementation "
+                "of Trainer.run_step()!")
+
+        if not hasattr(self, '_niter'):
+            self.hooked_sess.run(self.train_op)
+        else:
+            if(self._counter % self._niter == self._niter-1):
+                self.hooked_sess.run(self.train_op)
+            else:
+                self.hooked_sess.run(self.accum_op)
+            self._counter+=1
 
 
 class DistributedTrainerBase(SingleCostTrainer):
