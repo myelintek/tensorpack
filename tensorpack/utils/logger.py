@@ -23,7 +23,7 @@ class _MyFormatter(logging.Formatter):
         elif record.levelno == logging.ERROR or record.levelno == logging.CRITICAL:
             fmt = date + ' ' + colored('ERR', 'red', attrs=['blink', 'underline']) + ' ' + msg
         else:
-            fmt = date + ' ' + msg
+            fmt = date + ' ' + '[INFO] ' + msg
         if hasattr(self, '_style'):
             # Python3 compatibilty
             self._style._fmt = fmt

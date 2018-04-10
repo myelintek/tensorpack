@@ -119,7 +119,7 @@ def get_config(model, fake=False):
         monitors=monitors,
         extra_callbacks=extra_callbacks,
         steps_per_epoch=100 if args.fake else 1280000 // args.batch,
-        max_epoch=30,
+        max_epoch=args.epoch,
     )
 
 
@@ -139,6 +139,7 @@ if __name__ == '__main__':
     parser.add_argument('--mode', choices=['resnet', 'preact', 'se'],
                         help='variants of resnet to use', default='resnet')
     parser.add_argument('--chunk', help='accumulation', type=int, default=1)
+    parser.add_argument('--epoch', help='total epoch', type=int, default=30)
     args = parser.parse_args()
 
     if args.gpu:
