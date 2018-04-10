@@ -93,9 +93,11 @@ def get_config(model, fake=False):
                                   (90, BASE_LR * 1e-3), (100, BASE_LR * 1e-4)]),
         ]
         if BASE_LR > 0.1:
+            warmup_steps = 3*(1280000//args.batch)
+            logger.info("learning_rate growth from 0.1 to {} during first {} steps".format(BASE_LR, warmup_steps))
             callbacks.append(
                 ScheduledHyperParamSetter(
-                    'learning_rate', [(0, 0.1), (3, BASE_LR)], interp='linear'))
+                    'learning_rate', [(0, 0.1), (warmup_steps, BASE_LR)], interp='linear', step_based=True))
 
         infs = [ClassificationError('wrong-top1', 'val-error-top1'),
                 ClassificationError('wrong-top5', 'val-error-top5')]
@@ -106,11 +108,16 @@ def get_config(model, fake=False):
             # multi-GPU inference (with mandatory queue prefetch)
             callbacks.append(DataParallelInferenceRunner(
                 dataset_val, infs, list(range(nr_tower))))
+        monitors = [TFEventWriter(), JSONWriter(), ScalarPrinter(enable_step=True, enable_epoch=True, one_liner=True)]
+        extra_callbacks = [MovingAverageSummary(), MergeAllSummaries(period=50), RunUpdateOps()]
+
 
     return TrainConfig(
         model=model,
         dataflow=dataset_train,
         callbacks=callbacks,
+        monitors=monitors,
+        extra_callbacks=extra_callbacks,
         steps_per_epoch=100 if args.fake else 1280000 // args.batch,
         max_epoch=30,
     )
@@ -147,7 +154,7 @@ if __name__ == '__main__':
             logger.set_logger_dir(os.path.join('train_log', 'tmp'), 'd')
         else:
             logger.set_logger_dir(
-                os.path.join('train_log', 'imagenet-{}-d{}'.format(args.mode, args.depth)))
+                os.path.join('train_log', 'imagenet-{}-d{}'.format(args.mode, args.depth)), action='d')
 
         config = get_config(model, fake=args.fake)
         if args.load:

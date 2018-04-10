@@ -16,7 +16,7 @@ __all__ = ['set_logger_dir', 'auto_set_dir', 'get_logger_dir']
 
 class _MyFormatter(logging.Formatter):
     def format(self, record):
-        date = colored('[%(asctime)s @%(filename)s:%(lineno)d]', 'green')
+        date = '%(asctime)s'
         msg = '%(message)s'
         if record.levelno == logging.WARNING:
             fmt = date + ' ' + colored('WRN', 'red', attrs=['blink']) + ' ' + msg
@@ -36,7 +36,7 @@ def _getlogger():
     logger.propagate = False
     logger.setLevel(logging.INFO)
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(_MyFormatter(datefmt='%m%d %H:%M:%S'))
+    handler.setFormatter(_MyFormatter(datefmt='%Y-%m-%d %H:%M:%S'))
     logger.addHandler(handler)
     return logger
 
@@ -67,7 +67,7 @@ def _set_file(path):
         _logger.info("Existing log file '{}' backuped to '{}'".format(path, backup_name))  # noqa: F821
     hdl = logging.FileHandler(
         filename=path, encoding='utf-8', mode='w')
-    hdl.setFormatter(_MyFormatter(datefmt='%m%d %H:%M:%S'))
+    hdl.setFormatter(_MyFormatter(datefmt='%Y-%m-%d %H:%M:%S'))
 
     _FILE_HANDLER = hdl
     _logger.addHandler(hdl)

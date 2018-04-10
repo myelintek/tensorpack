@@ -368,7 +368,7 @@ class ScalarPrinter(TrainingMonitor):
     _chief_only = False
 
     def __init__(self, enable_step=False, enable_epoch=True,
-                 whitelist=None, blacklist=None):
+                 whitelist=None, blacklist=None, one_liner=False):
         """
         Args:
             enable_step, enable_epoch (bool): whether to print the
@@ -392,6 +392,7 @@ class ScalarPrinter(TrainingMonitor):
 
         self._enable_step = enable_step
         self._enable_epoch = enable_epoch
+        self._one_liner = one_liner
 
     def _setup_graph(self):
         self._dic = {}
@@ -421,12 +422,39 @@ class ScalarPrinter(TrainingMonitor):
                     return True
             return False
 
+        accuracy = None
+        loss = None
+        lr = None
+        is_training = True
+        top1_error = None
+
         for k, v in sorted(self._dic.items(), key=operator.itemgetter(0)):
             if self._whitelist is None or \
                     match_regex_list(self._whitelist, k):
                 if not match_regex_list(self._blacklist, k):
-                    logger.info('{}: {:.5g}'.format(k, v))
+                    if "accuracy" in k:
+                        accuracy = v
+                    elif "cross_entropy_loss" in k:
+                        loss = v
+                    elif "xentropy-loss" in k:
+                        loss = v
+                    elif "learning_rate" in k:
+                        lr = v
+                    elif "error-top1" in k:
+                        top1_error = v
+                        if accuracy is None:
+                            accuracy = 1. - top1_error
+                    if "val" in k:
+                        is_training = False
+                    if not self._one_liner:
+                        logger.info('{}: {:.5g}'.format(k, v))
         self._dic = {}
+        if self._one_liner and accuracy is not None:
+            current_epoch = round(self.global_step / float(self.trainer.steps_per_epoch), 3)
+            summary_str = "{} (epoch {}): loss = {:.5g}, lr = {:.5f}, accuracy = {:.5g}".format(
+                          ("Training" if is_training else "Validation"),
+                          current_epoch, float(loss), float(lr), float(accuracy))
+            logger.info(summary_str)
 
 
 class ScalarHistory(TrainingMonitor):
