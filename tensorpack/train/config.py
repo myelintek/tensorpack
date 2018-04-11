@@ -36,6 +36,11 @@ def DEFAULT_CALLBACKS():
         MergeAllSummaries(),
         RunUpdateOps()]
 
+def DEFAULT_CALLBACKS_OL():
+    return [
+        MovingAverageSummary(),
+        MergeAllSummaries(period=50),
+        RunUpdateOps()]
 
 def DEFAULT_MONITORS():
     """
@@ -48,6 +53,12 @@ def DEFAULT_MONITORS():
     3. ScalarPrinter()
     """
     return [TFEventWriter(), JSONWriter(), ScalarPrinter()]
+
+def DEFAULT_MONITORS_OL():
+    return [
+        TFEventWriter(),
+        JSONWriter(),
+        ScalarPrinter(enable_step=True, enable_epoch=True, one_liner=True)]
 
 
 class TrainConfig(object):
@@ -153,6 +164,10 @@ class TrainConfig(object):
             self.tower = kwargs.pop('tower')
         else:
             self.tower = [0]
+        if 'one_liner' in kwargs:
+            self._one_liner = kwargs.pop('one_liner')
+        else:
+            self._one_liner = False
         assert len(kwargs) == 0, "Unknown arguments: {}".format(kwargs.keys())
 
     @property

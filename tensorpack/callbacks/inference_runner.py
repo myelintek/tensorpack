@@ -107,7 +107,7 @@ class InferenceRunner(InferenceRunnerBase):
     A callback that runs a list of :class:`Inferencer` on some :class:`InputSource`.
     """
 
-    def __init__(self, input, infs, tower_name='InferenceTower', device=0):
+    def __init__(self, input, infs, tower_name='InferenceTower', device=0, one_liner=False):
         """
         Args:
             input (InputSource or DataFlow): The :class:`InputSource` to run
@@ -123,6 +123,7 @@ class InferenceRunner(InferenceRunnerBase):
         assert not isinstance(input, StagingInput), input
         self._tower_name = tower_name
         self._device = device
+        self._one_liner = one_liner
         super(InferenceRunner, self).__init__(input, infs)
 
     def _build_hook(self, inf):
@@ -160,6 +161,15 @@ class InferenceRunner(InferenceRunnerBase):
 
         self._input_source.reset_state()
         # iterate over the data, and run the hooked session
+        if self._one_liner:
+            with _inference_context():
+                num_itr = self._size if self._size > 0 else sys.maxsize
+                for _ in range(num_itr):
+                    self._hooked_sess.run(fetches=[])
+            for inf in self.infs:
+                inf.trigger_epoch()
+            return
+
         with _inference_context(), \
                 tqdm.tqdm(total=self._size, **get_tqdm_kwargs()) as pbar:
             num_itr = self._size if self._size > 0 else sys.maxsize
@@ -178,7 +188,7 @@ class DataParallelInferenceRunner(InferenceRunnerBase):
     It will run the remainder (when the total size of input is not a multiple of #GPU)
     sequentially.
     """
-    def __init__(self, input, infs, gpus):
+    def __init__(self, input, infs, gpus, one_liner=False):
         """
         Args:
             input (DataFlow or QueueInput)
@@ -196,6 +206,7 @@ class DataParallelInferenceRunner(InferenceRunnerBase):
 
         self._hooks = []
         self._hooks_parallel = []
+        self._one_liner = one_liner
 
     def _setup_graph(self):
         self._handles = []
@@ -269,6 +280,18 @@ class DataParallelInferenceRunner(InferenceRunnerBase):
         total = self._size
         nr_tower = len(self._gpus)
         self._input_source.reset_state()
+        if self._one_liner:
+            # don't print progress bar
+            with _inference_context():
+                while total >= nr_tower:
+                    self._parallel_hooked_sess.run(fetches=[])
+                    total -= nr_tower
+                # take care of the rest
+                for _ in range(total):
+                    self._hooked_sess.run(fetches=[])
+            for inf in self.infs:
+                inf.trigger_epoch()
+            return
         with _inference_context():
             with tqdm.tqdm(total=total, **get_tqdm_kwargs()) as pbar:
                 while total >= nr_tower:

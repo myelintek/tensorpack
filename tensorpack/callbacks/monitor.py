@@ -438,9 +438,23 @@ class ScalarPrinter(TrainingMonitor):
                         loss = v
                     elif "xentropy-loss" in k:
                         loss = v
+                    elif "weighted_cost" in k:
+                        loss = v
                     elif "learning_rate" in k:
                         lr = v
                     elif "error-top1" in k:
+                        top1_error = v
+                        if accuracy is None:
+                            accuracy = 1. - top1_error
+                    elif "train_error" in k:
+                        top1_error = v
+                        if accuracy is None:
+                            accuracy = 1. - top1_error
+                    elif "error_top1" in k:
+                        top1_error = v
+                        if accuracy is None:
+                            accuracy = 1. - top1_error
+                    elif "validation_error" in k:
                         top1_error = v
                         if accuracy is None:
                             accuracy = 1. - top1_error
@@ -453,7 +467,10 @@ class ScalarPrinter(TrainingMonitor):
             current_epoch = round(self.global_step / float(self.trainer.steps_per_epoch), 3)
             summary_str = "{} (epoch {}): loss = {:.5g}, lr = {:.5f}, accuracy = {:.5g}".format(
                           ("Training" if is_training else "Validation"),
-                          current_epoch, float(loss), float(lr), float(accuracy))
+                          current_epoch,
+                          float(loss),
+                          float(lr),
+                          float(accuracy))
             logger.info(summary_str)
 
 

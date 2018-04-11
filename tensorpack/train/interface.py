@@ -6,7 +6,7 @@ from ..input_source import (
     InputSource, FeedInput, QueueInput, StagingInput, DummyConstantInput)
 from ..utils import logger
 
-from .config import TrainConfig
+from .config import TrainConfig, DEFAULT_MONITORS_OL, DEFAULT_CALLBACKS_OL
 from .tower import SingleCostTrainer
 from .trainers import SimpleTrainer
 
@@ -76,6 +76,10 @@ def launch_train_with_config(config, trainer):
     inputs_desc = model.get_inputs_desc()
     input = config.data or config.dataflow
     input = apply_default_prefetch(input, trainer)
+
+    if config._one_liner:
+        config.monitors = DEFAULT_MONITORS_OL()
+        config.extra_callbacks = DEFAULT_CALLBACKS_OL()
 
     trainer.setup_graph(
         inputs_desc, input,

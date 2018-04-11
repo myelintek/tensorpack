@@ -103,23 +103,20 @@ def get_config(model, fake=False):
                 ClassificationError('wrong-top5', 'val-error-top5')]
         if nr_tower == 1:
             # single-GPU inference with queue prefetch
-            callbacks.append(InferenceRunner(QueueInput(dataset_val), infs))
+            callbacks.append(InferenceRunner(QueueInput(dataset_val), infs, one_liner=False))
         else:
             # multi-GPU inference (with mandatory queue prefetch)
             callbacks.append(DataParallelInferenceRunner(
-                dataset_val, infs, list(range(nr_tower))))
-        monitors = [TFEventWriter(), JSONWriter(), ScalarPrinter(enable_step=True, enable_epoch=True, one_liner=True)]
-        extra_callbacks = [MovingAverageSummary(), MergeAllSummaries(period=50), RunUpdateOps()]
+                dataset_val, infs, list(range(nr_tower)), one_liner=False))
 
 
     return TrainConfig(
         model=model,
         dataflow=dataset_train,
         callbacks=callbacks,
-        monitors=monitors,
-        extra_callbacks=extra_callbacks,
         steps_per_epoch=100 if args.fake else 1280000 // args.batch,
         max_epoch=args.epoch,
+        one_liner=False,
     )
 
 
@@ -160,5 +157,5 @@ if __name__ == '__main__':
         config = get_config(model, fake=args.fake)
         if args.load:
             config.session_init = get_model_loader(args.load)
-        trainer = SyncMultiGPUTrainerReplicated(max(get_nr_gpu(), 1))
+        trainer = SyncMultiGPUTrainerReplicated(max(get_nr_gpu(), 1), mode="nccl")
         launch_train_with_config(config, trainer)
