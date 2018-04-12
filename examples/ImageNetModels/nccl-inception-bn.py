@@ -13,17 +13,19 @@ from tensorpack.tfutils.symbolic_functions import prediction_incorrect
 from tensorpack.tfutils.summary import add_moving_summary
 from tensorpack.dataflow import dataset
 from tensorpack.utils.gpu import get_nr_gpu
+from tensorpack.train import (
+    TrainConfig, SyncMultiGPUTrainerReplicated, launch_train_with_config)
 
 from imagenet_utils import fbresnet_augmentor, get_imagenet_dataflow
+from tensorpack.tfutils.optimizer import AccumGradOptimizerAlt
 
-# Change them if using different number of GPUs.
-TOTAL_BATCH_SIZE = 64 * 6
-NR_GPU = 6
-BATCH_SIZE = TOTAL_BATCH_SIZE // NR_GPU
 INPUT_SHAPE = 224
 
 
 class Model(ModelDesc):
+    def __init__(self, chunk=1):
+        self.chunk = chunk
+
     def inputs(self):
         return [tf.placeholder(tf.float32, [None, INPUT_SHAPE, INPUT_SHAPE, 3], 'input'),
                 tf.placeholder(tf.int32, [None], 'label')]
@@ -116,10 +118,14 @@ class Model(ModelDesc):
 
     def optimizer(self):
         lr = tf.get_variable('learning_rate', initializer=0.045, trainable=False)
-        return tf.train.MomentumOptimizer(lr, 0.9)
+        tf.summary.scalar('learning_rate-summary', lr)
+        opt = tf.train.MomentumOptimizer(lr, 0.9)
+        if self.chunk != 1:
+            opt = AccumGradOptimizerAlt(opt, self.chunk)
+        return opt
 
 
-def get_data(train_or_test):
+def get_data(train_or_test, batch):
     isTrain = train_or_test == 'train'
     augs = fbresnet_augmentor(isTrain)
 
@@ -127,30 +133,44 @@ def get_data(train_or_test):
     pp_mean = meta.get_per_pixel_mean()
     augs.append(imgaug.MapImage(lambda x: x - pp_mean[16:-16, 16:-16]))
 
-    ds = get_imagenet_dataflow(args.data, train_or_test, BATCH_SIZE, augs)
+    ds = get_imagenet_dataflow(args.data, train_or_test, batch, augs)
     return ds
 
 
 def get_config():
-    logger.auto_set_dir()
-    dataset_train = get_data('train')
-    dataset_val = get_data('val')
+    nr_tower = max(get_nr_gpu(), 1)
+    assert args.logical_batch % args.chunk == 0
+    physical_batch = args.logical_batch / args.chunk
+    assert physical_batch % nr_tower == 0
+    batch = physical_batch // nr_tower
+ 
+    logger.info("Running on {} towers. Batch size per tower: {}".format(nr_tower, batch))
+    logger.auto_set_dir('d')
+    dataset_train = get_data('train', batch)
+    dataset_val = get_data('val', batch)
+
+    callbacks=[
+        ModelSaver(),
+        ScheduledHyperParamSetter('learning_rate',
+                                  [(8, 0.03), (14, 0.02), (17, 5e-3),
+                                   (19, 3e-3), (24, 1e-3), (26, 2e-4),
+                                   (30, 5e-5)]),
+    ]
+    infs = [ClassificationError('wrong-top1', 'val-error-top1'),
+            ClassificationError('wrong-top5', 'val-error-top5')]
+    if nr_tower == 1:
+        callbacks.append(InferenceRunner(QueueInput(dataset_val), infs, one_liner=True))
+    else:
+        callbacks.append(DataParallelInferenceRunner(
+            dataset_val, infs, list(range(nr_tower)), one_liner=True))
 
     return TrainConfig(
         dataflow=dataset_train,
-        callbacks=[
-            ModelSaver(),
-            InferenceRunner(dataset_val, [
-                ClassificationError('wrong-top1', 'val-top1-error'),
-                ClassificationError('wrong-top5', 'val-top5-error')]),
-            ScheduledHyperParamSetter('learning_rate',
-                                      [(8, 0.03), (14, 0.02), (17, 5e-3),
-                                       (19, 3e-3), (24, 1e-3), (26, 2e-4),
-                                       (30, 5e-5)])
-        ],
-        model=Model(),
-        steps_per_epoch=5000,
-        max_epoch=80,
+        callbacks=callbacks,
+        model=Model(chunk=args.chunk),
+        steps_per_epoch=1281167 // physical_batch,
+        max_epoch=args.epoch,
+        one_liner=True,
     )
 
 
@@ -159,6 +179,10 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', help='comma separated list of GPU(s) to use.')
     parser.add_argument('--load', help='load model')
     parser.add_argument('--data', help='ImageNet data root directory', required=True)
+    parser.add_argument('--chunk', help='accumulation', type=int, default=1)
+    parser.add_argument('--epoch', help='total epoch', type=int, default=80)
+    parser.add_argument('--logical_batch', default=256, type=int,
+                        help='total batch size. 32 per GPU gives best accuracy, higher values should be similarly good')
     args = parser.parse_args()
 
     if args.gpu:
@@ -167,6 +191,5 @@ if __name__ == '__main__':
     config = get_config()
     if args.load:
         config.session_init = SaverRestore(args.load)
-    nr_tower = get_nr_gpu()
-    assert nr_tower == NR_GPU
-    launch_train_with_config(config, SyncMultiGPUTrainer(NR_GPU))
+    trainer = SyncMultiGPUTrainerReplicated(max(get_nr_gpu(), 1), mode="nccl")
+    launch_train_with_config(config, trainer)

@@ -95,7 +95,7 @@ def get_config(model, fake=False):
                                   (90, BASE_LR * 1e-3), (100, BASE_LR * 1e-4)]),
         ]
         if BASE_LR > 0.1:
-            warmup_steps = 3*(1280000//physical_batch)
+            warmup_steps = 3*(1281167//physical_batch)
             logger.info("learning_rate growth from 0.1 to {} during first {} steps".format(BASE_LR, warmup_steps))
             callbacks.append(
                 ScheduledHyperParamSetter(
@@ -105,20 +105,20 @@ def get_config(model, fake=False):
                 ClassificationError('wrong-top5', 'val-error-top5')]
         if nr_tower == 1:
             # single-GPU inference with queue prefetch
-            callbacks.append(InferenceRunner(QueueInput(dataset_val), infs, one_liner=False))
+            callbacks.append(InferenceRunner(QueueInput(dataset_val), infs, one_liner=True))
         else:
             # multi-GPU inference (with mandatory queue prefetch)
             callbacks.append(DataParallelInferenceRunner(
-                dataset_val, infs, list(range(nr_tower)), one_liner=False))
+                dataset_val, infs, list(range(nr_tower)), one_liner=True))
 
 
     return TrainConfig(
         model=model,
         dataflow=dataset_train,
         callbacks=callbacks,
-        steps_per_epoch=100 if args.fake else 1280000 // physical_batch,
+        steps_per_epoch=100 if args.fake else 1281167 // physical_batch,
         max_epoch=args.epoch,
-        one_liner=False,
+        one_liner=True,
     )
 
 
