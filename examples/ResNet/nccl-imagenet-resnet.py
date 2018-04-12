@@ -71,8 +71,10 @@ def get_data(name, batch):
 
 def get_config(model, fake=False):
     nr_tower = max(get_nr_gpu(), 1)
-    assert args.batch % nr_tower == 0
-    batch = args.batch // nr_tower
+    assert args.logical_batch % args.chunk == 0
+    physical_batch = args.logical_batch / args.chunk
+    assert physical_batch % nr_tower == 0
+    batch = physical_batch // nr_tower
 
     if fake:
         logger.info("For benchmark, batch size is fixed to 64 per tower.")
@@ -84,7 +86,7 @@ def get_config(model, fake=False):
         dataset_train = get_data('train', batch)
         dataset_val = get_data('val', batch)
 
-        BASE_LR = 0.1 * (args.batch / 256.0) * args.chunk
+        BASE_LR = 0.1 * (args.logical_batch / 256.0)
         callbacks = [
             ModelSaver(),
             EstimatedTimeLeft(),
@@ -93,7 +95,7 @@ def get_config(model, fake=False):
                                   (90, BASE_LR * 1e-3), (100, BASE_LR * 1e-4)]),
         ]
         if BASE_LR > 0.1:
-            warmup_steps = 3*(1280000//args.batch)
+            warmup_steps = 3*(1280000//physical_batch)
             logger.info("learning_rate growth from 0.1 to {} during first {} steps".format(BASE_LR, warmup_steps))
             callbacks.append(
                 ScheduledHyperParamSetter(
@@ -114,7 +116,7 @@ def get_config(model, fake=False):
         model=model,
         dataflow=dataset_train,
         callbacks=callbacks,
-        steps_per_epoch=100 if args.fake else 1280000 // args.batch,
+        steps_per_epoch=100 if args.fake else 1280000 // physical_batch,
         max_epoch=args.epoch,
         one_liner=False,
     )
@@ -131,7 +133,7 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--depth', help='resnet depth',
                         type=int, default=50, choices=[18, 34, 50, 101, 152])
     parser.add_argument('--eval', action='store_true')
-    parser.add_argument('--batch', default=256, type=int,
+    parser.add_argument('--logical_batch', default=256, type=int,
                         help='total batch size. 32 per GPU gives best accuracy, higher values should be similarly good')
     parser.add_argument('--mode', choices=['resnet', 'preact', 'se'],
                         help='variants of resnet to use', default='resnet')
