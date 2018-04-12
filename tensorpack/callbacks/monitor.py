@@ -18,6 +18,7 @@ import tensorflow as tf
 from ..utils import logger
 from ..tfutils.summary import create_scalar_summary, create_image_summary
 from .base import Callback
+from decimal import Decimal
 
 __all__ = ['TrainingMonitor', 'Monitors',
            'TFEventWriter', 'JSONWriter',
@@ -470,7 +471,7 @@ class ScalarPrinter(TrainingMonitor):
                           current_epoch,
                           float(loss),
                           float(lr),
-                          float(accuracy))
+                          Decimal(accuracy))
             logger.info(summary_str)
 
 
