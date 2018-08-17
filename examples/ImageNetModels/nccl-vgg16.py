@@ -103,7 +103,7 @@ def get_config():
 
     infs = [ClassificationError('wrong-top1', 'val-error-top1'),
             ClassificationError('wrong-top5', 'val-error-top5')]
-    warmup_steps = 3*(1281167//physical_batch)
+    warmup_steps = 5*(1281167//physical_batch)
     callbacks = [
         ScheduledHyperParamSetter(
             'learning_rate',
